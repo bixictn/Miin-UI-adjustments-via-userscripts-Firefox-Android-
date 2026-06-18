@@ -436,7 +436,7 @@
     }
 
     document.addEventListener("click", e => {
-		if(location.pathname.indexOf('stroy')<0) return;
+		if(location.pathname.indexOf('story')<0) return;
         const thumb = e.target.closest('img[srcset*="/img/comment/"][sizes]');
 
         if (!thumb) return;
