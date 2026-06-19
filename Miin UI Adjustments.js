@@ -1,12 +1,15 @@
 // ==UserScript==
 // @name         Miin UI Adjustments
 // @namespace    http://tampermonkey.net/
-// @version      0.2.8
+// @version      0.2.8.1
 // @description  Miin UI Adjustments
 // @author       bixictn, Gemini, Chatgpt
 // @match        https://miin.cc/*
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20UI%20Adjustments.js
+// @downloadURL  https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20UI%20Adjustments.js
 // ==/UserScript==
+
 
 (function() {
     'use strict';
@@ -114,6 +117,17 @@
         margin-top: 45px;
     }
 
+    [id^="headlessui-menu-items-"][class="absolute z-10 mt-2 flex w-28 -translate-x-1/2 flex-col divide-y"]{
+        top: 12px;
+        bottom: 0px;
+        right: 0px;
+        left: 34px;
+    }
+
+    [id^="headlessui-menu-item-"][class="relative rounded-lg border bg-white p-2 shadow-menu"]{
+        height: fit-content !important;
+    }
+
     @media (min-width: 1024px) {
         .lg\:w-aside-max {
             ${isMobile?"":"width: 280px;"}
@@ -124,7 +138,7 @@
      ${isMobile?
         `
             position: fixed;
-            width:105%;
+            width:105dvw;
             top: 0%;
             margin-left: 0px !important;
         `:""}
@@ -140,8 +154,12 @@
     ""}
     }
 
+    .bg-branding.grid.min-h-screen.grid-cols-1.grid-rows-header-main-auto {
+        grid-template-rows: unset;
+    }
+
     [class^="order-2"] {
-    margin-top:20px;
+    margin-top:40px;
     padding-top: 5px;
     padding-bottom: 0px;
      ${isMobile?
@@ -157,6 +175,11 @@
         `padding-bottom: 100px;`
     :
     `padding-bottom: 80px;`}
+    }
+
+    .card-full {
+        margin-left: 0px;
+        margin-right: 0px;
     }
 
     article{
@@ -263,13 +286,6 @@
             -webkit-touch-callout: none !important;
             outline: none !important;
         }
-
-      .tw-p-lock {
-          display: inline-block !important;
-          white-space: nowrap !important;
-          height:fit-content !important;
-          width:fit-content !important;
-      }
 
       svg.hidden {
           display:none;
