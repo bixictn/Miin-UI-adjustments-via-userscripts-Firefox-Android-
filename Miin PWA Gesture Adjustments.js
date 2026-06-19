@@ -73,21 +73,18 @@
             return;
         }
         else{
-            if (document.querySelector("#pwa-image-viewer") || !e.state?.imageViewer) {
-                const escEvent = new KeyboardEvent('keydown', {
-                    key: 'Escape',
-                    code: 'Escape',
-                    keyCode: 27,
-                    which: 27,
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                });
-
-                document.dispatchEvent(escEvent);
+            if (document.querySelector("#pwa-image-viewer")){
+                closeViewer(true);
                 return;
             }
-
+			
+            if(!e.state?.imageViewer) {
+                //<div class="fixed inset-0 bg-black/20 opacity-100" id="headlessui-dialog-overlay-:r3s:" aria-hidden="true" data-headlessui-state="open"></div>
+                const closeTarget = document.querySelector('[id^="headlessui-dialog-overlay"]');
+                closeTarget.click();
+                return;
+            }
+			
             if(state.isPageChange){
                 setScrollLocation(location.pathname);
             }
