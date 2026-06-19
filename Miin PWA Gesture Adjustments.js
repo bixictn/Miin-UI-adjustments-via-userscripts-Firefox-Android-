@@ -77,14 +77,16 @@
                 closeViewer(true);
                 return;
             }
-			
-            if(!e.state?.imageViewer) {
-                //<div class="fixed inset-0 bg-black/20 opacity-100" id="headlessui-dialog-overlay-:r3s:" aria-hidden="true" data-headlessui-state="open"></div>
-                const closeTarget = document.querySelector('[id^="headlessui-dialog-overlay"]');
+
+            //<div class="fixed inset-0 bg-black/20 opacity-100" id="headlessui-dialog-overlay-:r3s:" aria-hidden="true" data-headlessui-state="open"></div>
+            const closeTarget = document.querySelector('[id^="headlessui-dialog-overlay"]');
+
+            if(closeTarget) {
                 closeTarget.click();
+                unlockScroll();
                 return;
             }
-			
+
             if(state.isPageChange){
                 setScrollLocation(location.pathname);
             }
