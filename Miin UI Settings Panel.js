@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         Miin UI Settings Panel
 // @namespace    http://tampermonkey.net/
-// @version      0.2.8
+// @version      0.2.8.1
 // @description  Miin UI Settings Panel
 // @author       bixictn, Gemini, Chatgpt
 // @match        https://miin.cc/*
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20UI%20Settings%20Panel.js
+// @downloadURL  https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20UI%20Settings%20Panel.js
 // ==/UserScript==
 
 (function() {
