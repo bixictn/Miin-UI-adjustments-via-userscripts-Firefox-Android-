@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name   Miin PWA Gesture Adjustments
 // @match  https://miin.cc/*
-// @version   0.2.8
+// @version   0.2.8.1
 // @description  Miin PWA Gesture Adjustments
 // @author       bixictn, Gemini, Chatgpt
 // @grant  none
 // @run-at    document-start
+// @updateURL    https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20PWA%20Gesture%20Adjustments.js
+// @downloadURL  https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20PWA%20Gesture%20Adjustments.js
 // ==/UserScript==
 
 (function () {
@@ -17,6 +19,7 @@
     let lastPath = location.pathname;
     let isDeployed = false;
     let debug = true;
+    let scrollHistory = {},targetScrollY = 0;
 
     const state = {
         isPageChange: false,
@@ -59,11 +62,24 @@
         if (e.state?.pwa === "base") {
             history.pushState({ ...(history.state || {}), pwa: "guard"}, "", location.pathname + TAG );
 
-            if(document.body.scrollTop<100){
+
+            if(getScrollY()<100){
                 location.reload();
             }
             else{
                 toTop();
+            }
+
+            return;
+        }
+        else{
+            if (document.querySelector("#pwa-image-viewer")) {
+                closeViewer(true);
+                return;
+            }
+
+            if(state.isPageChange){
+                setScrollLocation(location.pathname);
             }
             return;
         }
@@ -76,11 +92,17 @@
     function firstDeploy() {
 
         if (!sessionStorage.getItem(SESSION_KEY)) {
+            
 
             if (checkIsMobile()) {
                 alert("加強返回鍵!!!");
             }
 
+            document.addEventListener("scroll", e => {
+                if (state.isStartTouch) {
+                    scrollHistory[window.location.pathname] = getScrollY();
+                }
+            }, true);
             sessionStorage.setItem( SESSION_KEY, "true" );
         }
 
@@ -105,36 +127,61 @@
         state.isStartTouch = true;
     }, { passive: true, capture: true });
 
+    function getScrollY() {
+        return window.scrollY ||
+            document.documentElement.scrollTop ||
+            document.body.scrollTop ||
+            0;
+    }
+
+    function setScrollY(y) {
+        window.scrollTo(0, y);
+        document.documentElement.scrollTop = y;
+        document.body.scrollTop = y;
+
+    }
+
     const _pushState = history.pushState;
 
-    history.pushState = function () {
+        history.pushState = function () {
         _pushState.apply(this, arguments);
+
+       const isImageViewer = history.state?.imageViewer;
+        if(isImageViewer) return;
+
         const currentPath = location.pathname;
         if (lastPath !== currentPath) {
 
-            log(
-                "📄 Page Change",
-                lastPath,
-                "=>",
-                currentPath
-            );
+            log("📄 Page Change",lastPath,"=>", currentPath );
 
             state.isPageChange = true;
             lastPath = currentPath;
         } else {
             state.isPageChange = false;
         }
+
     };
 
-    document.addEventListener("click", e => {
-        const a = e.target.closest("a");
-        if (!a) return;
-        const url = new URL(a.href);
-        if (url.origin === location.origin) {
-            e.preventDefault();
-            location.href = url.href;
-        }
-    }, true);
+    function setScrollLocation(currentPath){
+
+        const savedPos = scrollHistory[currentPath];
+
+        const targetY = (state.isPageChange) ? savedPos : 0;
+
+        log(`[Start] 準備捲動至: ${targetY} (Path: ${currentPath})`);
+
+            targetScrollY = getScrollY();
+            let attempts = 0;
+            const recoverScroll = setInterval(() => {
+                setScrollY(targetY);
+                attempts++;
+
+                if (attempts > 30 || Math.abs(getScrollY() - savedPos) < 2) {
+                    clearInterval(recoverScroll); 
+                }
+            }, 30);
+        lastPath=currentPath;
+    }
 
     function emojiPanel(){
         //選擇emoji時不消失
@@ -193,20 +240,77 @@
         });
     }
 
+    function fixLinks() {
+        document.querySelectorAll?.('a[target="_blank"]').forEach(a => {
+            try {
+                const url = new URL(a.href, location.href);
+
+                if (url.origin === location.origin) {
+                    a.target = "_self";
+                }
+            } catch {}
+        });
+    };
+
+    let closingByBack = false;
+
+    let overlay;
+
+    function escHandler(ev) {
+        if (ev.key === "Escape") { closeViewer(); }
+    }
+    document.addEventListener( "keydown", escHandler );
+
+    function closeViewer(fromBack = false) {
+        unlockScroll();
+        document.removeEventListener( "keydown", escHandler);
+        overlay.remove();
+        if (!fromBack && history.state?.imageViewer) {
+            closingByBack = true;
+            history.back();
+        }
+    }
+
+    function unlockScroll() {
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+
+        document.body.style.touchAction = "";
+        document.documentElement.style.touchAction = "";
+
+        document.body.style.overscrollBehavior = "";
+        document.documentElement.style.overscrollBehavior = "";
+    }
+
     document.addEventListener("click", e => {
-        const img = e.target.closest("img");
-        if (!img) return;
-        if ( img.srcset && img.srcset.includes("assets.miin.cc/img/story/")) {
+        if(location.pathname.indexOf('story')<0) return;
+        const thumb = e.target.closest('img[srcset*="/img/comment/"][sizes]');
+        if (thumb){
+            setTimeout(() => {
+                document.querySelectorAll('img[srcset*="/img/comment/"]')
+                    .forEach(img => {
+                    if (img.hasAttribute("sizes")) return;
 
-            const srcset = img.srcset;
+                    if (img.dataset.zoomReady) return;
+                    img.dataset.zoomReady = "1";
+                    setupImageZoom(img);
+                });
+            }, 100);
+        }
+        else{
+            const img = e.target.closest("img");
+            if (!img) return;
+            if ( img.srcset && img.srcset.includes("assets.miin.cc/img/story/")) {
 
-            e.preventDefault();
-            e.stopPropagation();
+                const srcset = img.srcset;
 
-            const url = srcset.split(",").pop().trim().split(" ")[0];
-            const overlay = document.createElement("div");
+                e.preventDefault();
+                e.stopPropagation();
 
-            overlay.style.cssText = `
+                const url = srcset.split(",").pop().trim().split(" ")[0];
+                overlay = document.createElement("div");
+
+                overlay.style.cssText = `
 					 position:fixed;
 					 inset:0;
 					 background:rgba(0,0,0,.95);
@@ -220,11 +324,11 @@
 					 touch-action:none;
 					`;
 
-            const full = document.createElement("img");
+                const full = document.createElement("img");
 
-            full.src = url;
+                full.src = url;
 
-            full.style.cssText = `
+                full.style.cssText = `
 					 max-width:95vw;
 					 max-height:95vh;
 					 object-fit:contain;
@@ -235,41 +339,19 @@
 					 cursor:grab;
 					`;
 
-            function unlockScroll() {
-                document.body.style.overflow = "";
-                document.documentElement.style.overflow = "";
+                full.addEventListener( "click", e => e.stopPropagation());
 
-                document.body.style.touchAction = "";
-                document.documentElement.style.touchAction = "";
+                overlay.addEventListener( "click", e => {
+                    if (e.target !== overlay) return;
+                    closeViewer();
+                });
 
-                document.body.style.overscrollBehavior = "";
-                document.documentElement.style.overscrollBehavior = "";
+                overlay.appendChild(full);
+                overlay.id = "pwa-image-viewer";
+                document.body.appendChild( overlay );
+                history.pushState({...(history.state || {}), imageViewer: true}, "");
+                setupImageZoom( full, closeViewer );
             }
-
-            function closeViewer() {
-                unlockScroll();
-                document.removeEventListener( "keydown", escHandler);
-                overlay.remove();
-            }
-
-            function escHandler(ev) {
-                if (ev.key === "Escape") { closeViewer(); }
-            }
-
-            document.addEventListener( "keydown", escHandler );
-
-            full.addEventListener( "click", e => e.stopPropagation());
-
-            overlay.addEventListener( "click", e => {
-                if (e.target !== overlay) return;
-                closeViewer();
-            });
-
-            overlay.appendChild(full);
-
-            document.body.appendChild( overlay );
-
-            setupImageZoom( full, closeViewer );
         }
     }, true);
 
@@ -298,16 +380,7 @@
             document.documentElement.style.touchAction = "none";
             document.body.style.overscrollBehavior = "none";
             document.documentElement.style.overscrollBehavior = "none";
-        }
-
-        function unlockScroll() {
-            document.body.style.overflow = "";
-            document.documentElement.style.overflow = "";
-            document.body.style.touchAction = "";
-            document.documentElement.style.touchAction = "";
-            document.body.style.overscrollBehavior = "";
-            document.documentElement.style.overscrollBehavior = "";
-        }
+        }      
 
         function clampPosition() {
             const scaledWidth = img.offsetWidth * scale;
@@ -335,19 +408,16 @@
             touchMode = true;
             img.style.transition = "none";
             if ( e.touches.length === 1 ) {
-                touches=1;
                 startX = e.touches[0].pageX - pointX;
                 startY = e.touches[0].pageY - pointY;
             }
             else if ( e.touches.length === 2 ) {
-                touches=2;
                 initialDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY );
             }
         }, { passive:true });
 
         img.addEventListener( "touchmove", e => {
             if ( e.touches.length === 1 && scale > 1 ) {
-                touches=1;
                 e.preventDefault();
                 pointX = e.touches[0].pageX - startX;
                 pointY = e.touches[0].pageY - startY;
@@ -363,11 +433,11 @@
                 initialDist = dist;
                 updateTransform();
             }
-
         },{ passive:false });
 
         img.addEventListener("touchend",() => {
             const now = Date.now();
+
             if ( (now - lastTap < 300) && touches === 1) {
                 if ( scale === 1 ) {
                     scale = 2;
@@ -378,7 +448,7 @@
                 }
                 updateTransform();
             }
-            lastTap = now;
+            lastTap = now-(touches===2?500:0);
 
             if ( scale <= 1.05) {
                 scale = 1;
@@ -387,8 +457,9 @@
                 img.style.transform = "translate3d(0,0,0) scale(1)";
                 unlockScroll();
             }
-
-            setTimeout( () => { touchMode = false; }, 50);	});
+            touches=1;
+            setTimeout( () => { touchMode = false; }, 50);
+        });
 
         img.addEventListener("wheel", e => {
             e.preventDefault();
@@ -435,26 +506,10 @@
         updateTransform();
     }
 
-    document.addEventListener("click", e => {
-		if(location.pathname.indexOf('story')<0) return;
-        const thumb = e.target.closest('img[srcset*="/img/comment/"][sizes]');
-
-        if (!thumb) return;
-        setTimeout(() => {
-            document.querySelectorAll('img[srcset*="/img/comment/"]')
-                .forEach(img => {
-                if (img.hasAttribute("sizes")) return;
-
-                if (img.dataset.zoomReady) return;
-                img.dataset.zoomReady = "1";
-                setupImageZoom(img);
-            });
-        }, 100);
-    }, true);
-
     const observer = new MutationObserver(() => {
         ExecuteButton();
         emojiPanel();
+        fixLinks(document);
     }).observe(document, {
         childList: true,
         subtree: true
