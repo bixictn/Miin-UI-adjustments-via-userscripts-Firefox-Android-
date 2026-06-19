@@ -73,8 +73,18 @@
             return;
         }
         else{
-            if (document.querySelector("#pwa-image-viewer")) {
-                closeViewer(true);
+            if (document.querySelector("#pwa-image-viewer") || !e.state?.imageViewer) {
+                const escEvent = new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    code: 'Escape',
+                    keyCode: 27,
+                    which: 27,
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                });
+
+                document.dispatchEvent(escEvent);
                 return;
             }
 
@@ -92,7 +102,7 @@
     function firstDeploy() {
 
         if (!sessionStorage.getItem(SESSION_KEY)) {
-            
+
 
             if (checkIsMobile()) {
                 alert("加強返回鍵!!!");
@@ -143,10 +153,10 @@
 
     const _pushState = history.pushState;
 
-        history.pushState = function () {
+    history.pushState = function () {
         _pushState.apply(this, arguments);
 
-       const isImageViewer = history.state?.imageViewer;
+        const isImageViewer = history.state?.imageViewer;
         if(isImageViewer) return;
 
         const currentPath = location.pathname;
@@ -170,16 +180,16 @@
 
         log(`[Start] 準備捲動至: ${targetY} (Path: ${currentPath})`);
 
-            targetScrollY = getScrollY();
-            let attempts = 0;
-            const recoverScroll = setInterval(() => {
-                setScrollY(targetY);
-                attempts++;
+        targetScrollY = getScrollY();
+        let attempts = 0;
+        const recoverScroll = setInterval(() => {
+            setScrollY(targetY);
+            attempts++;
 
-                if (attempts > 30 || Math.abs(getScrollY() - savedPos) < 2) {
-                    clearInterval(recoverScroll); 
-                }
-            }, 30);
+            if (attempts > 30 || Math.abs(getScrollY() - savedPos) < 2) {
+                clearInterval(recoverScroll);
+            }
+        }, 30);
         lastPath=currentPath;
     }
 
@@ -252,25 +262,6 @@
         });
     };
 
-    let closingByBack = false;
-
-    let overlay;
-
-    function escHandler(ev) {
-        if (ev.key === "Escape") { closeViewer(); }
-    }
-    document.addEventListener( "keydown", escHandler );
-
-    function closeViewer(fromBack = false) {
-        unlockScroll();
-        document.removeEventListener( "keydown", escHandler);
-        overlay.remove();
-        if (!fromBack && history.state?.imageViewer) {
-            closingByBack = true;
-            history.back();
-        }
-    }
-
     function unlockScroll() {
         document.body.style.overflow = "";
         document.documentElement.style.overflow = "";
@@ -282,10 +273,29 @@
         document.documentElement.style.overscrollBehavior = "";
     }
 
+    let closingByBack = false;
+    let overlay;
+
+    function escHandler(ev) {
+        if (ev.key === "Escape") { closeViewer(); }
+    }
+    document.addEventListener( "keydown", escHandler );
+
+    function closeViewer(fromBack = false) {
+        unlockScroll();
+        if(overlay)overlay.remove();
+        if (!fromBack && history.state?.imageViewer) {
+            closingByBack = true;
+            history.back();
+        }
+    }
+
     document.addEventListener("click", e => {
+
         if(location.pathname.indexOf('story')<0) return;
         const thumb = e.target.closest('img[srcset*="/img/comment/"][sizes]');
         if (thumb){
+            history.pushState({...(history.state || {}), imageViewer: true}, "");
             setTimeout(() => {
                 document.querySelectorAll('img[srcset*="/img/comment/"]')
                     .forEach(img => {
@@ -294,6 +304,15 @@
                     if (img.dataset.zoomReady) return;
                     img.dataset.zoomReady = "1";
                     setupImageZoom(img);
+                    const observer = new MutationObserver((mutations, obs) => {
+                        if (!document.body.contains(img)) {
+                            if (history.state?.imageViewer) {
+                                history.back(); // 點旁邊消失了，自動把網址退回上一頁
+                            }
+                            obs.disconnect();
+                        }
+                    });
+                    observer.observe(document.body, { childList: true, subtree: true });
                 });
             }, 100);
         }
@@ -301,7 +320,6 @@
             const img = e.target.closest("img");
             if (!img) return;
             if ( img.srcset && img.srcset.includes("assets.miin.cc/img/story/")) {
-
                 const srcset = img.srcset;
 
                 e.preventDefault();
