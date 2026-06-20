@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name   Miin PWA Gesture Adjustments
 // @match  https://miin.cc/*
-// @version   0.2.8.1
+// @version   0.3.0
 // @description  Miin PWA Gesture Adjustments
 // @author       bixictn, Gemini, Chatgpt
 // @grant  none
@@ -18,8 +18,11 @@
 
     let lastPath = location.pathname;
     let isDeployed = false;
+    let closingByBack = false;
     let debug = true;
     let scrollHistory = {},targetScrollY = 0;
+
+    let handlescroll;
 
     const state = {
         isPageChange: false,
@@ -59,6 +62,7 @@
 
 
     window.addEventListener('popstate', (e) => {
+        state.isTouch=false;
         if (e.state?.pwa === "base") {
             history.pushState({ ...(history.state || {}), pwa: "guard"}, "", location.pathname + TAG );
 
@@ -73,8 +77,17 @@
             return;
         }
         else{
-            if (document.querySelector("#pwa-image-viewer")){
-                closeViewer(true);
+            // 🌟 1. 如果是我們自己程式碼呼叫 history.back() 引起的 popstate，直接放行，不做任何畫面處理
+            if (closingByBack) {
+                closingByBack = false; // 解鎖
+                e.stopImmediatePropagation();
+                return;
+            }
+
+            // 🌟 2. 如果是使用者手動按返回鍵（此時 closingByBack 是 false）
+            if (document.querySelector("#pwa-image-viewer")) {
+                closeViewer(true); // 傳入 true 告訴它：不要再 back 了！
+                e.stopImmediatePropagation();
                 return;
             }
 
@@ -84,11 +97,15 @@
             if(closeTarget) {
                 closeTarget.click();
                 unlockScroll();
+                e.stopImmediatePropagation();
                 return;
             }
 
             if(state.isPageChange){
-                setScrollLocation(location.pathname);
+                setTimeout(()=>{
+                    setScrollLocation(location.pathname);
+                },300);
+
             }
             return;
         }
@@ -107,11 +124,6 @@
                 alert("加強返回鍵!!!");
             }
 
-            document.addEventListener("scroll", e => {
-                if (state.isStartTouch) {
-                    scrollHistory[window.location.pathname] = getScrollY();
-                }
-            }, true);
             sessionStorage.setItem( SESSION_KEY, "true" );
         }
 
@@ -121,6 +133,24 @@
     ['touchstart', 'wheel'].forEach(evt => {
         window.addEventListener(evt, () => {
             state.isStartTouch = true;
+            let myScrollHandler;
+
+            if (handlescroll === undefined) {
+
+                myScrollHandler = (e) => {
+                    if(!scrollHistory[location.pathname])scrollHistory[location.pathname]=0;
+
+                    if (state.isStartTouch) {
+                        if (scrollHistory[location.pathname] - getScrollY() < 100) {
+                            scrollHistory[location.pathname] = getScrollY();
+                        }
+
+                    }
+                };
+
+                document.addEventListener("scroll", myScrollHandler, true);
+                handlescroll = myScrollHandler;
+            }
 
             if (
                 location.pathname === "/feed/trend" &&
@@ -168,7 +198,7 @@
         } else {
             state.isPageChange = false;
         }
-
+        state.isTouch=false;
     };
 
     function setScrollLocation(currentPath){
@@ -193,7 +223,6 @@
     }
 
     function emojiPanel(){
-        //選擇emoji時不消失
         const hpb=document.querySelector('[id^="headlessui-popover-button"]');
         if(!hpb) return
         if(hpb.dataset.done)return;
@@ -261,6 +290,15 @@
         });
     };
 
+    function lockScroll() {
+        document.body.style.overflow = "hidden";
+        document.documentElement.style.overflow = "hidden";
+        document.body.style.touchAction = "none";
+        document.documentElement.style.touchAction = "none";
+        document.body.style.overscrollBehavior = "none";
+        document.documentElement.style.overscrollBehavior = "none";
+    }
+
     function unlockScroll() {
         document.body.style.overflow = "";
         document.documentElement.style.overflow = "";
@@ -272,7 +310,7 @@
         document.documentElement.style.overscrollBehavior = "";
     }
 
-    let closingByBack = false;
+
     let overlay;
 
     function escHandler(ev) {
@@ -281,6 +319,7 @@
     document.addEventListener( "keydown", escHandler );
 
     function closeViewer(fromBack = false) {
+        state.isStartTouch=false;
         unlockScroll();
         if(overlay)overlay.remove();
         if (!fromBack && history.state?.imageViewer) {
@@ -295,6 +334,7 @@
         const thumb = e.target.closest('img[srcset*="/img/comment/"][sizes]');
         if (thumb){
             history.pushState({...(history.state || {}), imageViewer: true}, "");
+            lockScroll()
             setTimeout(() => {
                 document.querySelectorAll('img[srcset*="/img/comment/"]')
                     .forEach(img => {
@@ -302,11 +342,14 @@
 
                     if (img.dataset.zoomReady) return;
                     img.dataset.zoomReady = "1";
+
                     setupImageZoom(img);
                     const observer = new MutationObserver((mutations, obs) => {
                         if (!document.body.contains(img)) {
                             if (history.state?.imageViewer) {
-                                history.back(); // 點旁邊消失了，自動把網址退回上一頁
+                                unlockScroll();
+                                closingByBack = true;
+                                history.back();
                             }
                             obs.disconnect();
                         }
@@ -318,56 +361,97 @@
         else{
             const img = e.target.closest("img");
             if (!img) return;
-            if ( img.srcset && img.srcset.includes("assets.miin.cc/img/story/")) {
-                const srcset = img.srcset;
 
+            // 🌟 檢查點擊的是不是主文的貓咪大圖
+            if (img.srcset && img.srcset.includes("assets.miin.cc/img/story/")) {
                 e.preventDefault();
                 e.stopPropagation();
 
-                const url = srcset.split(",").pop().trim().split(" ")[0];
+                // 🌟 1. 精準鎖定主文 article 區塊，撈出主文內所有的 5 張貓咪圖片
+                const articleContainer = img.closest('article');
+                if (!articleContainer) return;
+
+                const allStoryImages = Array.from(articleContainer.querySelectorAll('figure img[srcset*="assets.miin.cc/img/story/"]'));
+
+                // 🌟 2. 解析出所有大圖的真正網址 (拿 1920w 的最清晰版本)
+                const imageUrls = allStoryImages.map(el => el.srcset.split(",").pop().trim().split(" ")[0]);
+                let currentIndex = allStoryImages.indexOf(img);
+                if (currentIndex === -1) currentIndex = 0;
+
+                log(`📸 成功打包相簿，共 ${imageUrls.length} 張照片，當前開啟第 ${currentIndex + 1} 張`);
+
+                // 3. 建立全螢幕遮罩
                 overlay = document.createElement("div");
-
+                overlay.id = "pwa-image-viewer";
                 overlay.style.cssText = `
-					 position:fixed;
-					 inset:0;
-					 background:rgba(0,0,0,.95);
-					 z-index:999999;
+            position: fixed; inset: 0; background: rgba(0,0,0,.95); z-index: 999999;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden; touch-action: none; user-select: none;
+        `;
 
-					 display:flex;
-					 align-items:center;
-					 justify-content:center;
-
-					 overflow:hidden;
-					 touch-action:none;
-					`;
-
+                // 4. 建立大圖節點
                 const full = document.createElement("img");
-
-                full.src = url;
-
+                full.src = imageUrls[currentIndex];
                 full.style.cssText = `
-					 max-width:95vw;
-					 max-height:95vh;
-					 object-fit:contain;
+            max-width: 95vw; max-height: 95vh; object-fit: contain;
+            -webkit-user-drag: none; cursor: grab; transition: transform 0.2s ease;
+        `;
+                full.addEventListener("click", e => e.stopPropagation());
+                overlay.appendChild(full);
 
-					 user-select:none;
-					 -webkit-user-drag:none;
+                // 🌟 5. 建立上方或中央的頁數提示（例如：3 / 5）
+                const counter = document.createElement("div");
+                counter.style.cssText = `
+            position: absolute; top: 20px; color: white; background: rgba(0,0,0,0.6);
+            padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: bold; z-index: 1000001;
+        `;
+                const updateCounter = () => {
+                    counter.innerText = `${currentIndex + 1} / ${imageUrls.length}`;
+                };
+                updateCounter();
+                overlay.appendChild(counter);
 
-					 cursor:grab;
-					`;
+                // 🌟 6. 多圖時，產生左右切換按鈕（手機版可以直接點邊邊切換，非常方便）
+                if (imageUrls.length > 1) {
+                    const createBtn = (text, isLeft) => {
+                        const btn = document.createElement("div");
+                        btn.innerText = text;
+                        btn.style.cssText = `
+                    position: absolute; top: 0; bottom: 0;
+                    ${isLeft ? 'left: 0;' : 'right: 0;'}
+                    width: 20%; max-width: 80px; display: flex; align-items: center;
+                    justify-content: center; color: rgba(255,255,255,0.7); font-size: 40px;
+                    cursor: pointer; z-index: 1000000; font-family: monospace;
+                    background: linear-gradient(${isLeft ? '90deg' : '270deg'}, rgba(0,0,0,0.2), transparent);
+                    transition: opacity 0.2s;
+                `;
+                        btn.addEventListener("click", (ev) => {
+                            ev.stopPropagation(); // 防止點擊關閉視窗
+                            if (isLeft) {
+                                currentIndex = (currentIndex - 1 + imageUrls.length) % imageUrls.length;
+                            } else {
+                                currentIndex = (currentIndex + 1) % imageUrls.length;
+                            }
+                            full.src = imageUrls[currentIndex]; // 切換圖片
+                            updateCounter(); // 更新頁數
+                        });
+                        return btn;
+                    };
 
-                full.addEventListener( "click", e => e.stopPropagation());
+                    overlay.appendChild(createBtn("‹", true));  // 左側點擊區
+                    overlay.appendChild(createBtn("›", false)); // 右側點擊區
+                }
 
-                overlay.addEventListener( "click", e => {
-                    if (e.target !== overlay) return;
-                    closeViewer();
+                // 7. 點擊圖片之外的空白背景處 ➔ 關閉
+                overlay.addEventListener("click", e => {
+                    if (e.target === overlay) closeViewer();
                 });
 
-                overlay.appendChild(full);
-                overlay.id = "pwa-image-viewer";
-                document.body.appendChild( overlay );
-                history.pushState({...(history.state || {}), imageViewer: true}, "");
-                setupImageZoom( full, closeViewer );
+                // 8. 塞進 Body、推送歷史紀錄狀態、綁定縮放
+                document.body.appendChild(overlay);
+                history.pushState({ ... (history.state || {}), imageViewer: true }, "");
+                setupImageZoom(full, closeViewer);
+
             }
         }
     }, true);
@@ -390,15 +474,6 @@
         let lastTap = 0, touches=1;
         img.style.transformOrigin = "center center";
 
-        function lockScroll() {
-            document.body.style.overflow = "hidden";
-            document.documentElement.style.overflow = "hidden";
-            document.body.style.touchAction = "none";
-            document.documentElement.style.touchAction = "none";
-            document.body.style.overscrollBehavior = "none";
-            document.documentElement.style.overscrollBehavior = "none";
-        }      
-
         function clampPosition() {
             const scaledWidth = img.offsetWidth * scale;
             const scaledHeight = img.offsetHeight * scale;
@@ -413,11 +488,13 @@
         function updateTransform() {
             clampPosition();
             img.style.transform = `translate3d(${pointX}px,${pointY}px,0) scale(${scale})`;
-            if (scale > 1) {
+            if (scale >= 1) {
                 lockScroll();
-            }
-            else {
-                unlockScroll();
+            } else {
+                // 🌟 只有在「不是」剛開圖的狀態下才解鎖
+                if (!history.state?.imageViewer) {
+                    unlockScroll();
+                }
             }
         }
 
@@ -472,7 +549,6 @@
                 pointX = 0; pointY = 0;
                 img.style.transition = "transform .25s ease";
                 img.style.transform = "translate3d(0,0,0) scale(1)";
-                unlockScroll();
             }
             touches=1;
             setTimeout( () => { touchMode = false; }, 50);
