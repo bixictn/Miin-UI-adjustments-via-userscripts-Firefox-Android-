@@ -263,7 +263,7 @@
     function ExecuteButton() {
         const buttons = document.querySelectorAll('[class^="btn"]');
         buttons.forEach(btn => {
-            if (btn.textContent.trim().indexOf('More')>=0) {
+            if (btn.textContent.trim().indexOf('More')>=0 && location.pathname.indexOf('story')>0) {
                 ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evtType => {
                     const event = new MouseEvent(evtType, {
                         view: window,
