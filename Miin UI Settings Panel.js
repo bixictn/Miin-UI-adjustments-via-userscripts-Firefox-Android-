@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Miin UI Settings Panel
 // @namespace    http://tampermonkey.net/
-// @version      0.2.8.1
-// @description  Miin UI Settings Panel
+// @version      0.3.0
+// @description  Miin UI Settings Panel with Gesture Close and LockScroll
 // @author       bixictn, Gemini, Chatgpt
 // @match        https://miin.cc/*
 // @grant        none
@@ -13,6 +13,8 @@
 (function() {
     'use strict';
 
+    let closingPanelByBack = false;
+
     // 1. 樣式注入
     const style = document.createElement('style');
     style.textContent = `
@@ -22,9 +24,12 @@
         [id$="btn"] { color: #D4AF37;border: 1px solid #777 !important; padding: 2px 5px; border-radius: 4px;}
         [role="menu"] { width: 56px !important;align-items: center;}
         [role="menuitem"] { height:42px !important; display: flex !important; align-items: center; padding: 5px !important; }
-
-
         .menu-item-primary:hover{ background-color:unset !important; }
+
+        /* 🌟 新增全螢幕透明點擊遮罩的樣式 */
+        #miin-settings-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999998; display: none;
+        }
     `;
     document.head.appendChild(style);
 
@@ -34,15 +39,30 @@
         return hasCoarsePointer || isMobileUA;
     }
 
-    // 2. 初始化與齒輪按鈕
+    // 🌟 捲動鎖定與解鎖功能
+    function lockScroll() {
+        document.documentElement.style.cssText = "overflow: hidden !important; height: 100vh !important;";
+        document.body.style.cssText = "overflow: hidden !important; height: 100vh !important; touch-action: none !important;";
+    }
+
+    function unlockScroll() {
+        document.documentElement.style.cssText = "";
+        document.body.style.cssText = "";
+    }
+
+    // 2. 初始化按鈕（保留備用）
     const gear = document.createElement('button');
     gear.innerHTML = '⚙️';
     gear.id = 'Cthemes';
     gear.style.cssText = `display:none;`;
 
+    // 🌟 建立背景點擊遮罩（點旁邊關閉用）
+    const overlay = document.createElement('div');
+    overlay.id = 'miin-settings-overlay';
+
     // 3. 面板結構
     const panel = document.createElement('div');
-    panel.id='miin-settings-panel';
+    panel.id = 'miin-settings-panel';
     panel.style.cssText = `
                 display:none;
                 position:fixed;
@@ -85,11 +105,33 @@
         </div>
     `;
 
-    document.body.append(gear, panel);
-    gear.onclick = () => panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    document.body.append(gear, overlay, panel);
+
+    // 🌟 核心控制：開啟面板
+    function openPanel() {
+        panel.style.display = 'block';
+        overlay.style.display = 'block';
+        lockScroll();
+        history.pushState({ ... (history.state || {}), uiSettingsPanel: true }, "");
+    }
+
+    // 🌟 核心控制：關閉面板
+    function closePanel(fromBack = false) {
+        panel.style.display = 'none';
+        overlay.style.display = 'none';
+        unlockScroll();
+
+        // 如果是點旁邊或點儲存（非返回鍵主導），主動向瀏覽器要求 back 把網址洗回來
+        if (!fromBack && history.state?.uiSettingsPanel) {
+            closingPanelByBack = true;
+            history.back();
+        }
+    }
+
+    // 點擊遮罩（點旁邊）關閉
+    overlay.onclick = () => closePanel(false);
 
     // 4. 功能邏輯
-    // 即時顏色預覽
     document.querySelectorAll('.panelinput').forEach(input => {
         input.style.color = input.value;
         input.addEventListener('input', (e) => e.target.style.color = e.target.value);
@@ -98,6 +140,7 @@
     // 儲存
     document.getElementById('save_btn').onclick = () => {
         configFields.forEach(f => localStorage.setItem(f.key, document.getElementById(f.id).value));
+        unlockScroll(); // 確保重新整理前解開鎖定
         location.reload();
     };
 
@@ -129,64 +172,75 @@
         input.click();
     };
 
-    const observer = new MutationObserver(() => {
-    const menu = document.querySelector('[role="menu"]');
-    if (!menu) return;
+    // 🌟 監聽手機返回鍵手勢（popstate）
+    window.addEventListener('popstate', (e) => {
+        if (closingPanelByBack) {
+            closingPanelByBack = false; // 解開安全鎖
+            return;
+        }
 
-    // 1. 隱藏原本懸浮在角落的齒輪
-    const gear = document.getElementById('Cthemes');
-    if (gear) gear.style.display = 'none';
+        // 如果在歷史紀錄中發現設定面板被倒退了，立刻關閉畫面
+        if (panel.style.display === 'block') {
+            closePanel(true);
+        }
+    }, true);
 
-    // 2. 尋找「個人電台」作為複製的模板
-    const menuItems = Array.from(menu.querySelectorAll('[role="menuitem"]'));
-    const templateItem = menuItems.find(item => item.textContent.includes('個人電台'));
-
-    // 3. 複製並建立「設定」按鈕 (確保不重複建立)
-    if (templateItem && !menu.querySelector('#settings-trigger')) {
-        const settingsItem = templateItem.cloneNode(true); // 完美複製外觀
-
-        // 修改設定按鈕的屬性
-        settingsItem.id = 'settings-trigger';
-        settingsItem.textContent = '🎨';
-        settingsItem.style.borderTop = '1px solid #444'; // 加個小分隔線會更好看
-        // 移除跳轉並綁定開啟面板的事件
-        settingsItem.removeAttribute('href');
-        settingsItem.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            // 注意：請確保你在建立設定面板時，有給 panel 設定 id="miin-settings-panel"
-            const panel = document.querySelector('#miin-settings-panel') || document.querySelector('div[style*="background:#999"]');
-            if (panel){
-                panel.style.display = panel.style.display==='block' ? 'none':'block';
-            }
-        };
-
-        // 將設定按鈕插入到個人電台的下方
-        templateItem.before(settingsItem);
-    }
-
-    // 4. 將選單內的所有文字替換成 Emoji
-    // 重新抓取一次最新的列表 (包含剛剛產生的設定按鈕)
-    const allItems = document.querySelectorAll('[role="menuitem"]');
-    allItems.forEach(item => {
-        // 檢查防護標記，避免無限迴圈
-        if (item.dataset.processed === 'true') return;
-
-        // 依照內容替換文字
-        if (item.textContent.includes('個人電台')) {
-            item.textContent = '🎙️';
-            item.dataset.processed = 'true';
-        } else if (item.textContent.includes('登出')) {
-            item.textContent = '➡️';
-            item.dataset.processed = 'true';
-        } else if (item.id === 'settings-trigger') {
-            // 新增的設定按鈕已經處理好了
-            item.dataset.processed = 'true';
+    // 🌟 監聽鍵盤 ESC 鍵
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && panel.style.display === 'block') {
+            closePanel(false);
         }
     });
-});
 
-// 啟動監聽器
-observer.observe(document.body, { childList: true, subtree: true });
+    // 5. 側邊選單修改
+    const menuObserver = new MutationObserver(() => {
+        const menu = document.querySelector('[role="menu"]');
+        if (!menu) return;
+
+        const gear = document.getElementById('Cthemes');
+        if (gear) gear.style.display = 'none';
+
+        const menuItems = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+        const templateItem = menuItems.find(item => item.textContent.includes('個人電台'));
+
+        if (templateItem && !menu.querySelector('#settings-trigger')) {
+            const settingsItem = templateItem.cloneNode(true);
+
+            settingsItem.id = 'settings-trigger';
+            settingsItem.textContent = '🎨';
+            settingsItem.style.borderTop = '1px solid #444';
+            settingsItem.removeAttribute('href');
+
+            // 🌟 綁定開關改為全新的核心函數
+            settingsItem.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (panel.style.display === 'block') {
+                    closePanel(false);
+                } else {
+                    openPanel();
+                }
+            };
+
+            templateItem.before(settingsItem);
+        }
+
+        const allItems = document.querySelectorAll('[role="menuitem"]');
+        allItems.forEach(item => {
+            if (item.dataset.processed === 'true') return;
+
+            if (item.textContent.includes('個人電台')) {
+                item.textContent = '🎙️';
+                item.dataset.processed = 'true';
+            } else if (item.textContent.includes('登出')) {
+                item.textContent = '➡️';
+                item.dataset.processed = 'true';
+            } else if (item.id === 'settings-trigger') {
+                item.dataset.processed = 'true';
+            }
+        });
+    });
+
+    menuObserver.observe(document.body, { childList: true, subtree: true });
 
 })();
