@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name   Miin PWA Gesture Adjustments
 // @match  https://miin.cc/*
-// @version   0.3.1.1
+// @version   0.3.1.2
 // @description  Miin PWA Gesture Adjustments
-// @author       bixictn, Gemini, Chatgpt
+// @author       bixictn, Gemini, ChatGPT
 // @grant  none
 // @run-at    document-start
 // @updateURL    https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20PWA%20Gesture%20Adjustments.js
@@ -411,9 +411,7 @@
                 updateCounter();
                 overlay.appendChild(counter);
 
-                // 🌟 6. 多圖時，產生左右切換按鈕（手機版可以直接點邊邊切換，非常方便）
                 if (imageUrls.length > 1) {
-                    // 🌟 1. 原有的點擊熱區換圖函式
                     const createBtn = (text, isLeft) => {
                         const btn = document.createElement("div");
                         btn.innerText = text;
@@ -658,32 +656,27 @@
             });
             clearBtn.style.display = 'none';
 
-            // 如果是點擊頂部按鈕主動關閉的，就幫網址倒退一頁
             if (!fromBack && history.state?.commentAim) {
-                closingAimByBack = true; // 鎖住 popstate，避免重複觸發
+                closingAimByBack = true; // 
                 history.back();
             }
         }
 
-        // 點擊頂部按鈕，觸發還原並倒退網址
         clearBtn.onclick = () => clearCommentAim(false);
 
-        // 🌟 3. 在全域的 popstate 監聽器中加入對應攔截
-        // (請把你既有的 window.addEventListener('popstate', ...) 最上方補上這段)
         window.addEventListener('popstate', (e) => {
-            // 如果是我們自己寫的 history.back() 引起的，直接放行
             if (closingAimByBack) {
+                e.stopImmediatePropagation();
                 closingAimByBack = false;
                 return;
             }
 
-            // 如果使用者滑手機返回鍵，且偵測到當前是要退出準星狀態
             if (!e.state?.commentAim && clearBtn.style.display === 'block') {
-                clearCommentAim(true); // 傳入 true 代表由返回鍵觸發，純還原畫面，不重疊 history.back
+                e.stopImmediatePropagation();
+                clearCommentAim(true);
                 return;
             }
 
-            // ... 你原本既有的 popstate 其他邏輯 (例如 pwa === "base" 或 imageViewer) ...
         }, true);
     }
 
