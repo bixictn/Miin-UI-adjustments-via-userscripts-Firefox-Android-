@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Adjustments
 // @namespace    http://tampermonkey.net/
-// @version      0.2.8.1
+// @version      0.3.1.1
 // @description  Miin UI Adjustments
 // @author       bixictn, Gemini, Chatgpt
 // @match        https://miin.cc/*
@@ -220,12 +220,12 @@
     .sticky.bottom-footer {
         position: fixed;
         ${isMobile?
-            `width: 99dvw;
+        `width: 99dvw;
             bottom: 7%;`
-            :
-            `width: 67.3dvw;
+    :
+    `width: 67.3dvw;
             bottom: 0%;`
-        }
+}
 
     }
 
@@ -289,6 +289,23 @@
 
       svg.hidden {
           display:none;
+      }
+
+      /*突顯留言設定*/
+      .group.flex.gap-2 .shrink-0 img {
+          cursor: pointer;
+          transition: transform 0.1s, ring 0.2s;
+      }
+      .group.flex.gap-2 .shrink-0 img:active {
+          transform: scale(1.1);
+      }
+
+      /* 固定在頂部的清除按鈕樣式 */
+        #miin-aim-clear-btn {
+            position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+            z-index: 1000000; background:${linkcolor}; color: black; font-weight: bold;
+            padding: 6px 16px; border-radius: 20px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 14px; display: none;
       }
   `;
 
@@ -463,6 +480,71 @@
     }
     updateTrendMode();
 
+    const clearBtn = document.createElement('div');
+    clearBtn.id = 'miin-aim-clear-btn';
+    clearBtn.innerText = '☀️ 還原';
+    document.body.appendChild(clearBtn);
+
+
+    function injectAvatarAim() {
+        // 撈出畫面上所有的留言外殼
+        const comments = document.querySelectorAll('.group.flex.gap-2');
+
+        comments.forEach(comment => {
+            // 找到頭像圖片
+            const avatarImg = comment.querySelector('.shrink-0 img');
+            if (!avatarImg || avatarImg.dataset.aimBound === 'true') return;
+
+            // 找到該則留言的 User ID 連結（用來抓 Href）
+            const userLink = comment.querySelector('a.link.font-bold');
+            if (!userLink) return;
+
+            const userHref = userLink.getAttribute('href');
+            avatarImg.title = `🎯 點擊鎖定與 ${userLink.textContent.trim()} 相關的對話`;
+
+            // 🌟 點擊頭像直接觸發過濾
+            avatarImg.onclick = (e) => {
+                // 阻擋原生可能造成的跳轉或 React 事件打架
+                e.preventDefault();
+                e.stopPropagation();
+
+                console.log(`🎯 頭像鎖定目標 User Href: ${userHref}`);
+                if (!history.state?.commentAim) {
+                    history.pushState({ ... (history.state || {}), commentAim: true }, "");
+                }
+                // 再次撈出所有留言進行過濾
+                const allComments = document.querySelectorAll('.group.flex.gap-2');
+
+                allComments.forEach(c => {
+                    c.style.transition = 'opacity 0.2s';
+
+                    const hasMention = c.querySelector(`a[href="${userHref}"]`);
+                    const isAuthor = c.querySelector(`a.link.font-bold[href="${userHref}"]`);
+                    const targetImg = c.querySelector('.shrink-0 img');
+
+                    if (hasMention || isAuthor) {
+                        c.style.opacity = '1';
+                        // 幫被鎖定的使用者頭像加上一個金色發光圈，方便識別是鎖定誰
+                        if (isAuthor && targetImg) {
+                            targetImg.style.boxShadow = '0 0 8px '+usercolor;
+                        }
+                    } else {
+                        c.style.opacity = '0.2';
+                        if (targetImg) targetImg.style.boxShadow = '';
+                    }
+                });
+
+                // 顯示頂部的清除按鈕
+                clearBtn.style.display = 'block';
+            };
+
+            // 標記已綁定，避免重複綁定
+            avatarImg.dataset.aimBound = 'true';
+        });
+    };
+
+
+
     let lastPath = location.pathname;
 
     const observer = new MutationObserver(() => {
@@ -474,6 +556,7 @@
         cleanContent();
         emojiSize();
         EmojiFeelings();
+        injectAvatarAim();
 
         if (location.pathname === lastPath) return;
         lastPath = location.pathname;
