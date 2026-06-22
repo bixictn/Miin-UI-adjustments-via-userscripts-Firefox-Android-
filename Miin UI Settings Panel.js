@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Miin UI Settings Panel
 // @namespace    http://tampermonkey.net/
-// @version      0.3.0
-// @description  Miin UI Settings Panel with Gesture Close and LockScroll
-// @author       bixictn, Gemini, Chatgpt
+// @version      0.3.1.3
+// @description  Miin UI Settings Panel 
+// @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20UI%20Settings%20Panel.js
@@ -41,13 +41,11 @@
 
     // 🌟 捲動鎖定與解鎖功能
     function lockScroll() {
-        document.documentElement.style.cssText = "overflow: hidden !important; height: 100vh !important;";
-        document.body.style.cssText = "overflow: hidden !important; height: 100vh !important; touch-action: none !important;";
+        document.body.classList.add('panel-scroll-locked');
     }
 
     function unlockScroll() {
-        document.documentElement.style.cssText = "";
-        document.body.style.cssText = "";
+        document.body.classList.remove('panel-scroll-locked');
     }
 
     // 2. 初始化按鈕（保留備用）
@@ -188,9 +186,11 @@
     // 🌟 監聽鍵盤 ESC 鍵
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && panel.style.display === 'block') {
+            e.preventDefault();
+            e.stopImmediatePropagation();
             closePanel(false);
         }
-    });
+    }, true);
 
     // 5. 側邊選單修改
     const menuObserver = new MutationObserver(() => {
