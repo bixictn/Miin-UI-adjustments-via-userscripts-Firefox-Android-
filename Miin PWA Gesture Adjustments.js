@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name   Miin PWA Gesture Adjustments
 // @match  https://miin.cc/*
-// @version   0.3.1.3
+// @version   0.3.1.4
 // @description  Miin PWA Gesture Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @grant  none
@@ -20,7 +20,7 @@
     let isDeployed = false;
     let closingByBack = false;
     let debug = true;
-    let scrollHistory = {},targetScrollY = 0;
+    let scrollHistory = {};
     let scale = 1;
     let handlescroll;
 
@@ -191,7 +191,7 @@
     function setScrollLocation(currentPath){
 
         const savedPos =(typeof scrollHistory[currentPath] === undefined)? 0 : scrollHistory[currentPath];
-        let targetY = (getScrollY() === 0 && savedPos > 0) ? savedPos:0;
+        let targetY = ((state.isPageChange || getScrollY() === 0) && savedPos > 0) ? savedPos:0;
 
         log(`[Start] 準備捲動至: ${targetY} (Path: ${currentPath})`);
 
