@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name   Miin PWA Gesture Adjustments
 // @match  https://miin.cc/*
-// @version   0.3.1.2
+// @version   0.3.1.3
 // @description  Miin PWA Gesture Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @grant  none
@@ -33,6 +33,21 @@
         if (debug) console.log(...args);
     }
 
+    function checkIsMobile() {
+        return (window.matchMedia("(pointer: coarse)").matches || /Mobi|Android|iPhone|iPad/i.test( navigator.userAgent) );
+    }
+
+    function firstDeploy() {
+
+        if (!sessionStorage.getItem(SESSION_KEY)) {
+            if (checkIsMobile()) {
+                alert("加強返回鍵!!!");
+            }
+            sessionStorage.setItem( SESSION_KEY, "true" );
+        }
+        deployGuard();
+    }
+
     function deployGuard() {
 
         if (location.pathname !== "/feed/trend")return;
@@ -41,7 +56,6 @@
         const baseState = history.state || {};
         log("🛡️ Deploy Guard");
         history.replaceState({...baseState,pwa: "base"}, "", "/feed/trend");
-
         history.pushState({...baseState,pwa: "guard"}, "", "/feed/trend" + TAG);
 
         isDeployed = true;
@@ -60,12 +74,10 @@
         });
     }
 
-
     window.addEventListener('popstate', (e) => {
         state.isTouch=false;
         if (e.state?.pwa === "base") {
             history.pushState({ ...(history.state || {}), pwa: "guard"}, "", location.pathname + TAG );
-
 
             if(getScrollY()<100){
                 location.reload();
@@ -78,22 +90,22 @@
         }
         else{
             // 🌟 1. 如果是我們自己程式碼呼叫 history.back() 引起的 popstate，直接放行，不做任何畫面處理
-            if (closingByBack) {
+            if (closingByBack) {//closeViewer() 已關閉且呼叫history.back(),解除unlockScroll();
                 closingByBack = false; // 解鎖
+                unlockScroll();
                 e.stopImmediatePropagation();
                 return;
             }
 
-            // 🌟 2. 如果是使用者手動按返回鍵（此時 closingByBack 是 false）
+            // 🌟 2. 使用回上頁（此時 closingByBack 是 false）
             if (document.querySelector("#pwa-image-viewer")) {
-                closeViewer(true); // 傳入 true 告訴它：不要再 back 了！
                 e.stopImmediatePropagation();
+                closeViewer(true);//history.state已退回,不須history.back();
                 return;
             }
 
             //<div class="fixed inset-0 bg-black/20 opacity-100" id="headlessui-dialog-overlay-:r3s:" aria-hidden="true" data-headlessui-state="open"></div>
             const closeTarget = document.querySelector('[id^="headlessui-dialog-overlay"]');
-
             if(closeTarget) {
                 closeTarget.click();
                 unlockScroll();
@@ -111,40 +123,18 @@
         }
     }, true);
 
-    function checkIsMobile() {
-        return (window.matchMedia("(pointer: coarse)").matches || /Mobi|Android|iPhone|iPad/i.test( navigator.userAgent) );
-    }
-
-    function firstDeploy() {
-
-        if (!sessionStorage.getItem(SESSION_KEY)) {
-
-
-            if (checkIsMobile()) {
-                alert("加強返回鍵!!!");
-            }
-
-            sessionStorage.setItem( SESSION_KEY, "true" );
-        }
-
-        deployGuard();
-    }
-
     ['touchstart', 'wheel'].forEach(evt => {
         window.addEventListener(evt, () => {
             state.isStartTouch = true;
             let myScrollHandler;
-
             if (handlescroll === undefined) {
-
                 myScrollHandler = (e) => {
                     if(!scrollHistory[location.pathname])scrollHistory[location.pathname]=0;
 
                     if (state.isStartTouch) {
-                        if (scrollHistory[location.pathname] - getScrollY() < 100) {
+                        if(getScrollY() != 0 && scrollHistory[location.pathname] >= 0){
                             scrollHistory[location.pathname] = getScrollY();
                         }
-
                     }
                 };
 
@@ -152,11 +142,9 @@
                 handlescroll = myScrollHandler;
             }
 
-            if (
-                location.pathname === "/feed/trend" &&
+            if (location.pathname === "/feed/trend" &&
                 history.state?.pwa === undefined &&
-                !isDeployed
-            ) {
+                !isDeployed ) {
                 firstDeploy();
             }
         }, {passive: true,capture: true});
@@ -177,7 +165,6 @@
         window.scrollTo(0, y);
         document.documentElement.scrollTop = y;
         document.body.scrollTop = y;
-
     }
 
     const _pushState = history.pushState;
@@ -203,23 +190,21 @@
 
     function setScrollLocation(currentPath){
 
-        const savedPos = scrollHistory[currentPath];
-
-        const targetY = (state.isPageChange) ? savedPos : 0;
+        const savedPos =(typeof scrollHistory[currentPath] === undefined)? 0 : scrollHistory[currentPath];
+        let targetY = (getScrollY() === 0 && savedPos > 0) ? savedPos:0;
 
         log(`[Start] 準備捲動至: ${targetY} (Path: ${currentPath})`);
 
-        targetScrollY = getScrollY();
         let attempts = 0;
         const recoverScroll = setInterval(() => {
             setScrollY(targetY);
             attempts++;
-
             if (attempts > 30 || Math.abs(getScrollY() - savedPos) < 2) {
                 clearInterval(recoverScroll);
             }
         }, 30);
-        lastPath=currentPath;
+
+        if(state.isPageChange)lastPath=currentPath;
     }
 
     function emojiPanel(){
@@ -291,35 +276,33 @@
     };
 
     function lockScroll() {
-        document.body.style.overflow = "hidden";
-        document.documentElement.style.overflow = "hidden";
-        document.body.style.touchAction = "none";
-        document.documentElement.style.touchAction = "none";
-        document.body.style.overscrollBehavior = "none";
-        document.documentElement.style.overscrollBehavior = "none";
+        document.body.classList.add('viewer-scroll-locked');
     }
 
     function unlockScroll() {
-        document.body.style.overflow = "";
-        document.documentElement.style.overflow = "";
-
-        document.body.style.touchAction = "";
-        document.documentElement.style.touchAction = "";
-
-        document.body.style.overscrollBehavior = "";
-        document.documentElement.style.overscrollBehavior = "";
+        // 🌟 只有在使用者真的退出了 imageViewer 狀態時，才移除圖片鎖
+        if (!history.state?.imageViewer) {
+            document.body.classList.remove('viewer-scroll-locked');
+            setScrollLocation(location.pathname);
+        }
     }
-
 
     let overlay;
 
+    //ESC關圖
     function escHandler(ev) {
-        if (ev.key === "Escape") { closeViewer(); }
+        if (ev.key === "Escape"){
+
+            if(history.state?.imageViewer) { closeViewer(); }
+            else if(history.state?.commentAim) { clearCommentAim();}
+
+        }
     }
+
     document.addEventListener( "keydown", escHandler );
 
+    //關圖設定
     function closeViewer(fromBack = false) {
-        state.isStartTouch=false;
         unlockScroll();
         if(overlay)overlay.remove();
         if (!fromBack && history.state?.imageViewer) {
@@ -332,7 +315,7 @@
 
         if(location.pathname.indexOf('story')<0) return;
         const thumb = e.target.closest('img[srcset*="/img/comment/"][sizes]');
-        if (thumb){
+        if (thumb){//留言圖點擊設定
             history.pushState({...(history.state || {}), imageViewer: true}, "");
             lockScroll()
             setTimeout(() => {
@@ -358,11 +341,9 @@
                 });
             }, 100);
         }
-        else{
+        else{// 🌟 檢查點擊的是不是主文的大圖
             const img = e.target.closest("img");
             if (!img) return;
-
-            // 🌟 檢查點擊的是不是主文的大圖
             if (img.srcset && img.srcset.includes("assets.miin.cc/img/story/")) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -373,7 +354,7 @@
 
                 const allStoryImages = Array.from(articleContainer.querySelectorAll('figure img[srcset*="assets.miin.cc/img/story/"]'));
 
-                // 🌟 2. 解析出所有大圖的真正網址 
+                // 🌟 2. 解析出所有大圖的真正網址
                 const imageUrls = allStoryImages.map(el => el.srcset.split(",").pop().trim().split(" ")[0]);
                 let currentIndex = allStoryImages.indexOf(img);
                 if (currentIndex === -1) currentIndex = 0;
@@ -452,7 +433,7 @@
                     overlay.addEventListener('touchstart', (e) => {
                         // 只有單指操作，且圖片「沒有放大」時，才允許觸發滑動換圖
                         // (避免跟雙指縮放或放大後的圖片拖曳事件衝突)
-                        if (e.touches.length === 1 && (typeof scale === 'undefined' || scale <= 1)) {
+                        if (e.touches.length === 1 && ( scale <= 1)) {
                             touchStartX = e.touches[0].clientX;
                             touchStartY = e.touches[0].clientY;
                         }
@@ -501,8 +482,7 @@
     }, true);
 
     function setupImageZoom( img,closeViewer) {
-
-
+        lockScroll();
 
         let pointX = 0;
         let pointY = 0;
@@ -525,21 +505,12 @@
             const maxScrollY = Math.max(0, (scaledHeight - window.innerHeight) / 2);
 
             pointX = Math.max(-maxScrollX, Math.min( maxScrollX, pointX ));
-
             pointY = Math.max(-maxScrollY, Math.min( maxScrollY, pointY ));
         }
 
         function updateTransform() {
             clampPosition();
             img.style.transform = `translate3d(${pointX}px,${pointY}px,0) scale(${scale})`;
-            if (scale >= 1) {
-                lockScroll();
-            } else {
-                // 🌟 只有在「不是」剛開圖的狀態下才解鎖
-                if (!history.state?.imageViewer) {
-                    unlockScroll();
-                }
-            }
         }
 
         img.addEventListener("touchstart", e => {
@@ -644,23 +615,94 @@
     }
 
     function highlightBtn(){
-        let closingAimByBack = false;
         const clearBtn = document.getElementById('miin-aim-clear-btn');
         if(!clearBtn) return;
 
-        function clearCommentAim(fromBack = false) {
-            document.querySelectorAll('.group.flex.gap-2').forEach(comment => {
-                comment.style.opacity = '1';
-                const img = comment.querySelector('.shrink-0 img');
-                if (img) img.style.boxShadow = '';
-            });
-            clearBtn.style.display = 'none';
+        // 撈出畫面上所有的留言外殼
+        const usercolor = localStorage.getItem('miin_usercolor') || '#D7BE41';
+        const comments = document.querySelectorAll('.group.flex.gap-2');
 
-            if (!fromBack && history.state?.commentAim) {
-                closingAimByBack = true; // 
-                history.back();
-            }
+        comments.forEach(comment => {
+            // 找到頭像圖片
+            const avatarImg = comment.querySelector('.shrink-0 img');
+            if (!avatarImg || avatarImg.dataset.aimBound === 'true') return;
+
+            // 找到該則留言的 User ID 連結（用來抓 Href）
+            const userLink = comment.querySelector('a.link.font-bold');
+            if (!userLink) return;
+
+            const userHref = userLink.getAttribute('href');
+            avatarImg.title = `🎯 點擊鎖定與 ${userLink.textContent.trim()} 相關的對話`;
+
+            // 🌟 點擊頭像直接觸發過濾
+            avatarImg.onclick = (e) => {
+                // 阻擋原生可能造成的跳轉或 React 事件打架
+                e.preventDefault();
+                e.stopPropagation();
+
+                // 🌟 核心修改：判斷是否已經處於被鎖定狀態（如果自己帶有金框，代表再點一次要消掉）
+                if (avatarImg.style.boxShadow.includes('8px')) {
+                    log("🎯 偵測到再次點擊相同目標，執行解鎖");
+                    clearBtn.click(); // 直接模擬點擊清除鈕，走標準還原與 history.back() 流程
+                    return;
+                }
+
+                log(`🎯 頭像鎖定目標 User Href: ${userHref}`);
+                if (!history.state?.commentAim) {
+                    history.pushState({ ... (history.state || {}), commentAim: true }, "");
+                }
+
+                // 再次撈出所有留言進行過濾
+                const allComments = document.querySelectorAll('.group.flex.gap-2');
+
+                allComments.forEach(c => {
+                    c.style.transition = 'opacity 0.2s';
+
+                    const hasMention = c.querySelector(`a[href="${userHref}"]`);
+                    const isAuthor = c.querySelector(`a.link.font-bold[href="${userHref}"]`);
+                    const targetImg = c.querySelector('.shrink-0 img');
+
+                    if (hasMention || isAuthor) {
+                        c.style.opacity = '1';
+                        // 幫被鎖定的使用者頭像加上一個金色發光圈，方便識別是鎖定誰
+                        if (isAuthor && targetImg) {
+                            targetImg.style.boxShadow = '0 0 8px ' + usercolor;
+                        }
+                    } else {
+                        c.style.opacity = '0.2';
+                        if (targetImg) targetImg.style.boxShadow = '';
+                    }
+                });
+
+                // 顯示頂部的清除按鈕
+                clearBtn.style.display = 'block';
+            };
+
+            // 標記已綁定，避免重複綁定
+            avatarImg.dataset.aimBound = 'true';
+        });
+    }
+
+    let closingAimByBack = false;
+    //關閉醒目留言
+    function clearCommentAim(fromBack = false) {
+        document.querySelectorAll('.group.flex.gap-2').forEach(comment => {
+            comment.style.opacity = '1';
+            const img = comment.querySelector('.shrink-0 img');
+            if (img) img.style.boxShadow = '';
+        });
+        const clearBtn = document.getElementById('miin-aim-clear-btn');
+        if (clearBtn) clearBtn.style.display = 'none';
+
+        if (!fromBack && history.state?.commentAim) {
+            closingAimByBack = true;
+            history.back();
         }
+    }
+
+    const initAimController = () => {
+        const clearBtn = document.getElementById('miin-aim-clear-btn');
+        if (!clearBtn || clearBtn.dataset.init === 'true') return;
 
         clearBtn.onclick = () => clearCommentAim(false);
 
@@ -671,21 +713,23 @@
                 return;
             }
 
-            if (!e.state?.commentAim && clearBtn.style.display === 'block') {
+            const btn = document.getElementById('miin-aim-clear-btn');
+            if (!e.state?.commentAim && btn && btn.style.display === 'block') {
                 e.stopImmediatePropagation();
                 clearCommentAim(true);
                 return;
             }
-
         }, true);
-    }
 
+        clearBtn.dataset.init = 'true';
+    };
 
     const observer = new MutationObserver(() => {
         ExecuteButton();
         emojiPanel();
-        fixLinks(document);
+        fixLinks();
         highlightBtn();
+        initAimController();
     }).observe(document, {
         childList: true,
         subtree: true
