@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Miin UI Settings Panel
 // @namespace    http://tampermonkey.net/
-// @version      0.3.1.3
-// @description  Miin UI Settings Panel 
+// @version      0.3.1.5
+// @description  Miin UI Settings Panel
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
 // @grant        none
@@ -241,6 +241,6 @@
         });
     });
 
-    menuObserver.observe(document.body, { childList: true, subtree: true });
+    menuObserver.observe(document.body?document.body:document, { childList: true, subtree: true });
 
 })();
