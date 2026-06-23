@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Adjustments
 // @namespace    http://tampermonkey.net/
-// @version      0.3.1.3
+// @version      0.3.1.5
 // @description  Miin UI Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -156,6 +156,9 @@
 
     .bg-branding.grid.min-h-screen.grid-cols-1.grid-rows-header-main-auto {
         grid-template-rows: unset;
+    }
+    [class="ml-0 grid min-h-screen grid-cols-1 grid-rows-header-main-footer md:ml-aside-min md:grid-rows-header-main lg:ml-aside-max"]{
+        margin-bottom: -42px !important;
     }
 
     [class^="order-2"] {
@@ -520,7 +523,7 @@
         updateTrendMode();
     });
 
-    observer.observe(document.body, {
+    observer.observe(document.body?document.body:document, {
         childList: true,
         subtree: true
     });
