@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.2.1
+// @version      0.2.2
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -110,8 +110,7 @@
 
             html += `
                 <a href="${searchUrl}" class="hover:bg-primary-light text-neutral-dark hover:text-primary transition-colors duration-150" style="display: inline-flex !important; align-items: center !important; flex-direction: row !important; white-space: nowrap !important; background-color: ${bgcolor} !important; padding: 6px 14px !important; border-radius: 9999px !important; font-size: 13px !important; text-decoration: none !important; border: 1px solid transparent !important; gap: 6px !important;">
-                    <span style="font-size: 13px !important; color: ${linkcolor} !important; font-weight: bold !important;">#${cleanTag}</span>
-                    <span style="font-size: 13px !important; color: #FFF !important; background: ${bubblecolor} !important; padding: 1px 6px !important; border-radius: 9999px !important; display: inline-block !important;">${item.data.storyCount}</span>
+                    <span style="font-size: 13px !important; color: ${linkcolor} !important; font-weight: bold !important;">#${cleanTag}</span>                    
                 </a>
             `;
         });
