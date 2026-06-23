@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.2.0
+// @version      0.2.1
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -23,15 +23,17 @@
           bubblecolor=localStorage.getItem('miin_bubblecolor') ||'#5F7B84';
 
     function injectExploreContent() {
-        // 🌟 整合你的路由守衛：確保只在 search 頁面執行
-        const search = window.location.pathname;
-        if (search.indexOf('search') < 0) return;
+        const search = window.location.href;
+        if (!search.endsWith('search')) {
+            fetchdata=false
+            return;
+        }
 
         const targetForm = document.querySelector('div.card-full form.p-8');
         if (targetForm && !document.getElementById('pwa-explore-container') && !fetchdata) {
 
-            console.log("🎯 [PWA] 偵測到搜尋區塊，正在同步載入 50 迷友與 50 最新迷音...");
-fetchdata=true;
+            console.log("🎯 [PWA] 偵測到搜尋區塊，正在同步迷友與最新迷音...");
+            fetchdata=true;
             Promise.all([
                 fetch("https://api.miin.cc/mobile/explore/v5/explore/user:list?limit=50&cursor=").then(res => res.json()),
                 fetch("https://api.miin.cc/mobile/explore/v5/explore/hashtag:list?limit=15&cursor=").then(res => res.json()),
@@ -42,16 +44,15 @@ fetchdata=true;
                     const exploreNode = createExploreContainer(userData.users, tagData.hashtags, storyData.stories);
                     if (exploreNode) {
                         targetForm.insertAdjacentElement('afterend', exploreNode);
-                        console.log("✅ [PWA] 50迷友橫滑 ＋ 50最新迷音 大縱深注入成功！");
+                        console.log("✅ [PWA] 迷友橫滑 ＋ 最新迷音 成功！");
 
                     }
                 }
             })
-                .catch(err => {console.error("❌ [PWA] 跨界撈取 App 資料流失敗:", err);fetchdata=false;});
+                .catch(err => {console.error("❌ [PWA] 撈取資料失敗:", err);fetchdata=false;});
         }
     }
 
-    // 1. 配合新需求微調的終極 UI 產生器
     function createExploreContainer(users, hashtags, stories) {
         if (document.getElementById('pwa-explore-container')) return null;
 
@@ -78,7 +79,6 @@ fetchdata=true;
                 " class="no-scrollbar">
         `;
 
-        // 🌟 更改為全量放行 .slice(0, 50)，解鎖 50 個迷友橫滑
         users.slice(0, 50).forEach((user) => {
             const userUrl = `https://miin.cc/user?userId=${user.userId}`;
             const avatarUrl = user.data.avatar.thumb || user.data.avatar.url || 'https://miin.cc/miin.png';
@@ -89,7 +89,7 @@ fetchdata=true;
                         <img src="${avatarUrl}" style="width: 52px !important; height: 52px !important; border-radius: 50% !important; object-fit: cover !important; border: 2px solid ${linkcolor} !important;" class="group-hover:border-primary" />
                         ${user.data.badge === 'golden' ? `<span style="position: absolute !important; bottom: -2px !important; right: -2px !important; background: #ffcc00 !important; border-radius: 50% !important; width: 16px !important; height: 16px !important; display: flex !important; align-items: center !important; justify-content: center !important; font-size: 10px !important; border: 1.5px solid #ffffff !important;">⚡</span>` : ''}
                     </div>
-                    <span style="font-size: 11px !important; color: ${usercolor} !important; margin-top: 25px !important; max-width: 64px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; text-align: center !important;">${user.data.nickname}</span>
+                    <span style="font-size: 13px !important; color: ${usercolor} !important; margin-top: 25px !important; max-width: 64px !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; text-align: center !important;">${user.data.nickname}</span>
                 </a>
             `;
         });
@@ -110,8 +110,8 @@ fetchdata=true;
 
             html += `
                 <a href="${searchUrl}" class="hover:bg-primary-light text-neutral-dark hover:text-primary transition-colors duration-150" style="display: inline-flex !important; align-items: center !important; flex-direction: row !important; white-space: nowrap !important; background-color: ${bgcolor} !important; padding: 6px 14px !important; border-radius: 9999px !important; font-size: 13px !important; text-decoration: none !important; border: 1px solid transparent !important; gap: 6px !important;">
-                    <span style="color: ${linkcolor} !important; font-weight: bold !important;">#${cleanTag}</span>
-                    <span style="font-size: 11px !important; color: #FFF !important; background: ${bubblecolor} !important; padding: 1px 6px !important; border-radius: 9999px !important; display: inline-block !important;">${item.data.storyCount}</span>
+                    <span style="font-size: 13px !important; color: ${linkcolor} !important; font-weight: bold !important;">#${cleanTag}</span>
+                    <span style="font-size: 13px !important; color: #FFF !important; background: ${bubblecolor} !important; padding: 1px 6px !important; border-radius: 9999px !important; display: inline-block !important;">${item.data.storyCount}</span>
                 </a>
             `;
         });
@@ -138,10 +138,10 @@ fetchdata=true;
                         <div style="font-size: ${fsnormal} !important; font-weight: 600 !important; color: ${fscolor} !important; line-height: 1.4 !important; display: -webkit-box !important; -webkit-line-clamp: 2 !important; -webkit-box-orient: vertical !important; overflow: hidden !important;">
                             ${story.data.title || '無標題貼文'}
                         </div>
-                        <div style="font-size: 11px !important; color: ${bgcolor2} !important; margin-top: 6px !important; display: flex !important; gap: 10px !important; align-items: center !important;">
+                        <div style="font-size: 13px !important; color: ${bgcolor2} !important; margin-top: 6px !important; display: flex !important; gap: 10px !important; align-items: center !important;">
                             <span style="font-weight: 500; color: ${usercolor};">${authorName}</span>
                             ${story.data.commentCount ? `<span style="font-weight: 500; color: ${usercolor};">💬 ${story.data.commentCount}</span>` : ''}
-                            ${reactionCount ? `<span style="font-weight: 500; color: ${usercolor};">🦐 ${reactionCount}</span>` : ''}
+                            ${reactionCount ? `<span style="font-weight: 500; color: ${usercolor};">👏 ${reactionCount}</span>` : ''}
                         </div>
                     </div>
                     ${coverImg ? `
@@ -159,10 +159,6 @@ fetchdata=true;
         container.innerHTML = html;
         return container;
     }
-    // 3. 專屬樣式與 MutationObserver 守衛
-    const style = document.createElement('style');
-    style.innerHTML = `.no-scrollbar::-webkit-scrollbar { display: none; }`;
-    document.head.appendChild(style);
 
     function checkIsMobile() {
         const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
