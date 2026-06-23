@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name   Miin PWA Gesture Adjustments
 // @match  https://miin.cc/*
-// @version   0.3.1.4
+// @version   0.3.1.5
 // @description  Miin PWA Gesture Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @grant  none
@@ -191,7 +191,7 @@
     function setScrollLocation(currentPath){
 
         const savedPos =(typeof scrollHistory[currentPath] === undefined)? 0 : scrollHistory[currentPath];
-        let targetY = ((state.isPageChange || getScrollY() === 0) && savedPos > 0) ? savedPos:0;
+        let targetY = savedPos ;
 
         log(`[Start] 準備捲動至: ${targetY} (Path: ${currentPath})`);
 
@@ -337,7 +337,7 @@
                             obs.disconnect();
                         }
                     });
-                    observer.observe(document.body, { childList: true, subtree: true });
+                    observer.observe(document.body?document.body:document, { childList: true, subtree: true });
                 });
             }, 100);
         }
@@ -730,7 +730,7 @@
         fixLinks();
         highlightBtn();
         initAimController();
-    }).observe(document, {
+    }).observe(document.body?document.body:document, {
         childList: true,
         subtree: true
     });
