@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name   Miin PWA Gesture Adjustments
 // @match  https://miin.cc/*
-// @version   0.3.1.6
+// @version   0.3.1.7
 // @description  Miin PWA Gesture Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @grant  none
@@ -156,7 +156,7 @@
 
     function getScrollY() {
         return window.scrollY ||
-            document.documentElement.scrollTop ;
+            document.body.scrollTop ;
     }
 
     function setScrollY(y) {
