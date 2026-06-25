@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Adjustments
 // @namespace    http://tampermonkey.net/
-// @version      0.3.1.5
+// @version      0.3.1.7
 // @description  Miin UI Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -45,10 +45,14 @@
         padding: 0 !important;
     }
 
+    #__next {
+        ${isMobile?"":`overflow-y: hidden !important;`}
+        height: auto !important;
+    }
+
     #__next, main, div, section, article, header, footer {
         max-width: 100vw !important;
-        min-width: 0 !important; /* 打破原廠 min-width 限制 */
-        box-sizing: border-box !important;
+        min-width: 0 !important; 
     }
 
     /* 強制自動換行，防止長網址撐破版面 */
@@ -172,12 +176,16 @@
     `padding-left: 15px;padding-right: 15px;
         margin-left: 25px;margin-right: 25px;`}
     }
+    /*hashtag*/
+    [class='order-2 bg-light pt-0 lg:px-12 px-4 pb-12']{
+        ${isMobile?"":"margin-bottom:100px;"}
+    }
 
     [id="comment"]{
         ${isMobile?
         `padding-bottom: 100px;`
     :
-    `padding-bottom: 80px;`}
+    `padding-bottom: 120px;`}
     }
 
     .card-full {
@@ -290,9 +298,13 @@
             outline: none !important;
         }
 
-      svg.hidden {
-          display:none;
-      }
+        .bg-banner {
+            display: none;
+        }
+
+        svg.hidden {
+            display:none;
+        }
 
       /*突顯留言設定*/
       .group.flex.gap-2 .shrink-0 img {
@@ -334,21 +346,17 @@
 
 
     function ModifyButton() {
-        const buttons = document.querySelectorAll('[class^="btn"]');
+        const buttons = document.querySelectorAll('[class^="btn"]:not([data-pwa-mod])');
         buttons.forEach(btn => {
-            if (btn.textContent.trim().indexOf('App')>0) {
+            btn.setAttribute('data-pwa-mod', '1');
+            const text = btn.textContent.trim();
+            if (text.indexOf('App') > 0) {
                 btn.style.setProperty('display', 'none', 'important');
-            }
-            else if(btn.textContent.trim().indexOf('下載')>=0) {
+            } else if (text.indexOf('下載') >= 0) {
                 const parentDiv = btn.closest('div');
-                if (parentDiv) {
-                    parentDiv.style.setProperty('display', 'none', 'important');
-                }
-                else{
-                    btn.parentElement.style.setProperty('display', 'none', 'important');
-                }
-            }
-            else if(btn.textContent.trim().indexOf('Search')>=0){
+                if (parentDiv) parentDiv.style.setProperty('display', 'none', 'important');
+                else btn.parentElement.style.setProperty('display', 'none', 'important');
+            } else if (text.indexOf('Search') >= 0) {
                 btn.style.setProperty('position', 'relative', 'important');
             }
         });
@@ -357,11 +365,9 @@
     function updateActiveMenu() {
         const currentPath = window.location.pathname;
         const menuLinks = document.querySelectorAll('nav a.group,footer a.group');
-
         menuLinks.forEach(link => {
             const href = link.getAttribute('href');
             if (!href) return;
-
             if (currentPath === href || currentPath.startsWith(href)) {
                 link.classList.add('custom-active-link');
             } else {
@@ -371,24 +377,21 @@
     }
 
     function addBubbleQuoteClass() {
-        const targetElements = document.querySelectorAll('.relative.flex.gap-2.leading-6');
+        // 🌟 最佳化：利用 :not 排除已處理的元素，避免重複遍歷
+        const targetElements = document.querySelectorAll('.relative.flex.gap-2.leading-6:not(.bubble-quote)');
         targetElements.forEach(element => {
-            if (!element.classList.contains('bubble-quote')) {
-                element.classList.add('bubble-quote');
-            }
+            element.classList.add('bubble-quote');
         });
     }
 
-    // 💡 改為 1.0 比例，配合 CSS 的 RWD 限制
     function preventInputZoom() {
-        const inputs = document.querySelectorAll('input, textarea, select');
+        const inputs = document.querySelectorAll('input:not([data-zoom-lock]), textarea:not([data-zoom-lock]), select:not([data-zoom-lock])');
         const viewportMeta = document.querySelector('meta[name="viewport"]');
-
         if (!viewportMeta) return;
-
         const originalContent = viewportMeta.getAttribute('content');
 
         inputs.forEach(input => {
+            input.setAttribute('data-zoom-lock', '1');
             input.addEventListener('focus', () => {
                 viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
             });
@@ -398,32 +401,27 @@
         });
     }
 
-    // 💡 改為 1.0 比例，不再物理縮小整個網頁
     function lockViewportCompletely() {
         let viewport = document.querySelector('meta[name="viewport"]');
-
         if (!viewport) {
             viewport = document.createElement('meta');
             viewport.name = 'viewport';
             document.head.appendChild(viewport);
         }
-
-        viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        if (viewport.getAttribute('content') !== 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no') {
+            viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        }
     }
 
     function checkIsMobile() {
-        const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
-        const isMobileUA = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-        return hasCoarsePointer || isMobileUA;
+        return window.matchMedia("(pointer: coarse)").matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
     }
 
     function cleanContent() {
         document.querySelectorAll('span:not([data-obj-cleaned])').forEach(span => {
             let hasObj = false;
             span.childNodes.forEach(node => {
-                if(!node)return;
-
-                if (node.nodeType === 3 && node.nodeValue.includes('\uFFFC')) {
+                if (node && node.nodeType === 3 && node.nodeValue.includes('\uFFFC')) {
                     node.nodeValue = node.nodeValue.replace(/\uFFFC/g, '');
                     hasObj = true;
                 }
@@ -432,72 +430,67 @@
         });
     }
 
-    //EmojiSize --- Start
-    function emojiSize(){
-        const spans = document.querySelectorAll('span');
-        for ( const span of spans){
-            if(span.className !== '') continue;
-            if(span.dataset.processed) continue;
-            const twlock=span.querySelectorAll('span[class="tw-p-lock"]');
-            if(!twlock)continue;
+    // 🌟 最佳化：高度最佳化核心耗能函式 emojiSize
+    const segmenter = new Intl.Segmenter('zh-TW', { granularity: 'grapheme' });
+    function emojiSize() {
+        const spans = document.querySelectorAll('span:not([data-processed])');
+        spans.forEach(span => {
+            if (span.className !== '') return;
+            const twlock = span.querySelectorAll('span[class="tw-p-lock"]');
+            if (twlock.length === 0) return;
+
             const emojis = span.querySelectorAll('img[class*="twemoji"]');
-            // 取得容器內的純文字（去除空白）
+            if (emojis.length === 0 || emojis.length > 3) return;
+
             const textContent = span.textContent.trim();
-            const segmenter = new Intl.Segmenter('zh-TW', { granularity: 'grapheme' });
             const segments = segmenter.segment(textContent);
-            // 條件：純文字長度為 0 且 emoji 數量在 1~3 個之間
-            if ([...segments].length === (twlock.length-emojis.length) && emojis.length > 0 && emojis.length <= 3) {
-                span.dataset.processed=true;
-                span.style.setProperty('display', 'flex','important');
-                span.style.setProperty('line-height', '58px','important');
+
+            if ([...segments].length === (twlock.length - emojis.length)) {
+                span.setAttribute('data-processed', 'true');
+                span.style.setProperty('display', 'flex', 'important');
+                span.style.setProperty('line-height', '58px', 'important');
 
                 twlock.forEach(twspan => {
-                    twspan.style.setProperty('display', 'flex','important');
+                    twspan.style.setProperty('display', 'flex', 'important');
                     twspan.style.setProperty('height', '60px', 'important');
                     twspan.style.setProperty('width', '60px', 'important');
-                    twspan.style.setProperty('font-size','49px','important');
+                    twspan.style.setProperty('font-size', '49px', 'important');
                     twspan.style.setProperty('margin', '0px 5px 0px 0px', 'important');
-                    twspan.style.setProperty('line-height', '58px','important');
-                    twspan.style.setProperty('align-items', 'center','important');
-                    twspan.style.setProperty('justify-content','center','important');
+                    twspan.style.setProperty('line-height', '58px', 'important');
+                    twspan.style.setProperty('align-items', 'center', 'important');
+                    twspan.style.setProperty('justify-content', 'center', 'important');
                     const emoji = twspan.querySelector('img[class*="twemoji"]');
-                    if(emoji){
-                        emoji.style.setProperty('display', 'flex','important');
-                        emoji.style.setProperty('line-height', '58px','important');
-                        emoji.style.setProperty('display', 'flex','important');
+                    if (emoji) {
+                        emoji.style.setProperty('display', 'flex', 'important');
+                        emoji.style.setProperty('line-height', '58px', 'important');
                         emoji.style.setProperty('height', '54px', 'important');
                         emoji.style.setProperty('width', '54px', 'important');
-                        emoji.style.setProperty('font-size','48px','important');
-                        emoji.style.setProperty('align-items', 'center','important');
-                        emoji.style.setProperty('justify-content','center','important');
+                        emoji.style.setProperty('font-size', '48px', 'important');
+                        emoji.style.setProperty('align-items', 'center', 'important');
+                        emoji.style.setProperty('justify-content', 'center', 'important');
                     }
                 });
             }
-
-        }
+        });
     }
-    //EmojiSize --- End
 
-    function EmojiFeelings(){
-        if(checkIsMobile()){
-            const ef=document.querySelector("[class^='flex items-center justify-between']")
-            if(ef){
-                ef.style.setProperty("display","grid");
-                ef.style.setProperty("grid-template-columns", "repeat(auto-fit, minmax(200px, 1fr)");
-                const efs=ef.querySelector("[class='flex']");
-                if(efs){
-                    efs.style.setProperty("align-items", "center;");
-                    efs.style.setProperty("justify-content", "end");
-                }
+    function EmojiFeelings() {
+        if (!isMobile) return;
+        const ef = document.querySelector("[class^='flex items-center justify-between']:not([data-pwa-ef])");
+        if (ef) {
+            ef.setAttribute('data-pwa-ef', '1');
+            ef.style.setProperty("display", "grid");
+            ef.style.setProperty("grid-template-columns", "repeat(auto-fit, minmax(200px, 1fr)");
+            const efs = ef.querySelector("[class='flex']");
+            if (efs) {
+                efs.style.setProperty("align-items", "center;");
+                efs.style.setProperty("justify-content", "end");
             }
         }
     }
 
     function updateTrendMode() {
-        document.documentElement.classList.toggle(
-            "miin-trend-page",
-            location.pathname === "/feed/trend"
-        );
+        document.documentElement.classList.toggle("miin-trend-page", location.pathname === "/feed/trend");
     }
     updateTrendMode();
 
@@ -508,7 +501,9 @@
 
     let lastPath = location.pathname;
 
-    const observer = new MutationObserver(() => {
+    // 🌟 核心最佳化：建立排程排隊機制（AnimationFrame），拒絕主執行緒被頻繁阻塞
+    let animationFrameId = null;
+    function runAllAdjustments() {
         ModifyButton();
         updateActiveMenu();
         addBubbleQuoteClass();
@@ -518,15 +513,20 @@
         emojiSize();
         EmojiFeelings();
 
-        if (location.pathname === lastPath) return;
-        lastPath = location.pathname;
-        updateTrendMode();
+        if (location.pathname !== lastPath) {
+            lastPath = location.pathname;
+            updateTrendMode();
+        }
+    }
+
+    const observer = new MutationObserver(() => {
+        // 使用 requestAnimationFrame 將 DOM 批次處理移至瀏覽器準備更新畫面的那一幀執行，確保網頁滑動時維持極致順暢
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(runAllAdjustments);
     });
 
-    observer.observe(document.body?document.body:document, {
+    observer.observe(document.body || document.documentElement, {
         childList: true,
         subtree: true
     });
-
-
 })();
