@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Settings Panel
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0
+// @version      0.4.0.1
 // @description  Miin UI Settings Panel
 // @author       bixictn
 // @match        https://miin.cc/*
@@ -116,8 +116,8 @@
         if (typeof unsafeWindow.fetchMiinProfile === 'function') {
             unsafeWindow.fetchMiinProfile().then(userData => {
                 if (userData) {
-                    document.getElementById("cover_container").style.backgroundImage = `url('${userData.cover[0].url}')`;
-                    document.getElementById('avatar_img').src=userData.avatar[0].url;
+                    if(userData.cover.length>0)document.getElementById("cover_container").style.backgroundImage = `url('${userData.cover[0].url}')`;
+                    if(userData.avatar.length>0)document.getElementById('avatar_img').src=userData.avatar[0].url;
                     document.getElementById('username_display').textContent = `@${userData.username}`;
                     document.getElementById('nickname_input').value = userData.nickname || '';
                     document.getElementById('intro_input').value = userData.intro || '';
