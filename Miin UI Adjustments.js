@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Adjustments
 // @namespace    http://tampermonkey.net/
-// @version      0.3.1.7
+// @version      0.4.0
 // @description  Miin UI Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -117,7 +117,7 @@
 
     [id^="headlessui-menu-items-"] {
         background-color: ${profileitemcolor} !important;
-        bottom: -135px;
+        bottom: -170px;
         margin-top: 45px;
     }
 
