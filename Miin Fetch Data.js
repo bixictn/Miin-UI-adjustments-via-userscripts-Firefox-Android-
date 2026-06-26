@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.2.3
+// @version      0.3.0
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -21,6 +21,95 @@
           bgcolor=localStorage.getItem('miin_bgcolor') ||'#2C2C2C',
           bgcolor2=localStorage.getItem('miin_bgcolor2') ||'#111111',
           bubblecolor=localStorage.getItem('miin_bubblecolor') ||'#5F7B84';
+
+    unsafeWindow.validToken = null;
+
+    // 取token
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+        if(unsafeWindow.validToken)return originalFetch.apply(this, args);
+        const [url, options] = args;
+
+        if (options && options.headers) {
+            let authHeader = null;
+            // 判斷 headers 是 Headers 物件還是普通的 JS Object
+            if (options.headers instanceof Headers || typeof options.headers.get === 'function') {
+                authHeader = options.headers.get('authorization') || options.headers.get('Authorization');
+            } else {
+                authHeader = options.headers['authorization'] || options.headers['Authorization'] ||
+                    options.headers['authorization'.toLowerCase()];
+            }
+
+            // 只要發現 Bearer 開頭的標頭就直接抓起來 (不限定網址，防止相對路徑漏抓)
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                unsafeWindow.validToken = authHeader.replace('Bearer ', '');
+                console.log("🎯 [Fetch 攔截器] 成功捕獲活體 Token！");
+            }
+        }
+        return originalFetch.apply(this, args);
+    };
+
+    // 2. 攔截 XMLHttpRequest (XHR / Axios) 取token
+    const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
+        if(unsafeWindow.validToken)return originalSetRequestHeader.apply(this, arguments);
+        if (header.toLowerCase() === 'authorization' && value.startsWith('Bearer ')) {
+            unsafeWindow.validToken = value.replace('Bearer ', '');
+            console.log("🎯 [XHR 攔截器] 成功捕獲活體 Token！");
+        }
+        return originalSetRequestHeader.apply(this, arguments);
+    };
+
+
+    // 🌟 共用工具：產生模擬 App 的 UUID
+    function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    function getMiinToken() {
+        if (typeof unsafeWindow.validToken !== 'undefined' && unsafeWindow.validToken) {
+            return unsafeWindow.validToken;
+        }
+        const cookies = document.cookie.split(';');
+        const targetCookies = cookies.map(c => c.trim()).filter(c => c.startsWith('miin-auth='));
+        if (targetCookies.length > 0) return targetCookies.pop().substring(10);
+
+    }
+
+    // 🌟 API：取得使用者個人資料 (掛載到全域供 UI 腳本呼叫)
+    unsafeWindow.fetchMiinProfile = async function() {
+        const token = getMiinToken();
+        if (!token) return null;
+
+        const res = await new Promise(resolve => GM_xmlhttpRequest({
+            method: "GET",
+            url: "https://api.miin.cc/mobile/v4/user/profile",
+            headers: {
+                "authorization": `Bearer ${token}`,
+                "x-user-agent": "Miin/Android-4.9.9",
+                "user-agent": "okhttp/4.12.0"
+            },
+            onload: (res) => resolve(res.status === 200 ? JSON.parse(res.responseText).user.data : null)
+        }));
+
+        const meRes = await new Promise(resolve => GM_xmlhttpRequest({
+            method: "GET",
+            url: "https://api.miin.cc/mobile/v4/setting/me",
+            headers: {
+                "authorization": `Bearer ${token}`,
+                "x-user-agent": "Miin/Android-4.9.9",
+                "user-agent": "okhttp/4.12.0"
+            },
+            onload: (res) => resolve(res.status === 200 ? JSON.parse(res.responseText).me.data : null)
+        }));
+
+        if (!meRes) return null;
+
+        return {...res, cover: meRes.cover}; // 直接回傳包含 intro, avatar, cover 的完整物件
+    };
 
     function injectExploreContent() {
         const search = window.location.href;
@@ -77,7 +166,7 @@
                     width: 100% !important;
                     padding-bottom: 12px !important;
                     scrollbar-width: none;
-                    cursor: grab; /* 🌟 提示滑鼠可以抓取/滾動的視覺體感 */
+                    cursor: grab;
                 " class="no-scrollbar">
         `;
 
@@ -105,14 +194,13 @@
                 <div style="display: flex !important; flex-direction: row !important; flex-wrap: wrap !important;margin-top: 25px !important; gap: 10px !important; width: 100% !important;">
         `;
 
-        // 渲染 Hashtag
         hashtags.forEach((item) => {
             const cleanTag = item.tag.replace('#', '');
             const searchUrl = `https://miin.cc/hashtag/${encodeURIComponent(cleanTag)}`;
 
             html += `
                 <a href="${searchUrl}" class="hover:bg-primary-light text-neutral-dark hover:text-primary transition-colors duration-150" style="display: inline-flex !important; align-items: center !important; flex-direction: row !important; white-space: nowrap !important; background-color: ${bgcolor} !important; padding: 6px 14px !important; border-radius: 9999px !important; font-size: 13px !important; text-decoration: none !important; border: 1px solid transparent !important; gap: 6px !important;">
-                    <span style="font-size: 13px !important; color: ${linkcolor} !important; font-weight: bold !important;">#${cleanTag}</span>                    
+                    <span style="font-size: 13px !important; color: ${linkcolor} !important; font-weight: bold !important;">#${cleanTag}</span>
                 </a>
             `;
         });
@@ -126,14 +214,12 @@
                 <div style="display: flex !important; flex-direction: column !important; margin-top: 25px !important;gap: 14px !important; width: 100% !important;">
         `;
 
-        // 🌟 正名並解鎖全量放行 .slice(0, 50)，讓 50 篇最新迷音一路鋪下去
         const storyPromises = stories.slice(0, 50).map(async (story) => {
             const storyUrl = `https://miin.cc/story/${story.storyId}`;
             const coverImg = story.data.cover?.thumb || story.data.cover?.url || '';
             const authorName = story.data.author?.data?.nickname || '最新迷音';
             const reactionCount = story.data.reactions?.reduce((sum, r) => sum + (r.count || 0), 0) || 0;
 
-            // 正確等待這篇文章的引文資料
             const quoteNode = await fetchQuoteNode(story.storyId);
             let pContent;
             if(quoteNode){
@@ -144,13 +230,12 @@
                 }
             }
 
-            // 回傳單篇的 HTML 區塊
             return `
                 <a href="${storyUrl}" class="group" style="display: flex !important; flex-direction: row !important; justify-content: space-between !important; gap: 12px !important; text-decoration: none !important; padding: 12px !important; border-radius: 12px !important; background: ${bgcolor} !important; transition: background 0.15s;" onmouseover="this.style.background='#f2f2f7'" onmouseout="this.style.background='${bgcolor}'">
                     <div style="display: flex !important; flex-direction: column !important; justify-content: space-between !important; flex: 1 !important;">
                         <div style="font-size: ${fsnormal} !important; font-weight: 600 !important; color: ${fscolor} !important; line-height: 1.4 !important; display: -webkit-box !important; -webkit-line-clamp: 2 !important; -webkit-box-orient: vertical !important; overflow: hidden !important;">
                             ${story.data.title || '無標題貼文'}
-                            ${pContent?`<div>[轉錄]${pContent}</div>`:""}
+                            ${pContent?`<div>[轉錄]${pContent.replace(/\uFFFC/g, '')}</div>`:""}
                         </div>
                         <div style="font-size: 13px !important; color: ${bgcolor2} !important; margin-top: 6px !important; display: flex !important; gap: 10px !important; align-items: center !important;">
                             <span style="font-weight: 500; color: ${usercolor};">${authorName}</span>
@@ -166,7 +251,6 @@
             `;
         });
 
-        // 🌟 等待所有 50 篇文章都抓完並產生字串後，再一次性合併
         const storyHtmlArray = await Promise.all(storyPromises);
         html += storyHtmlArray.join('');
 
@@ -188,7 +272,6 @@
     function createEmbeddedQuoteNode(parentStory) {
         if (document.getElementById('pwa-injected-quote')) return null;
 
-        // 拿取被引用貼文的 ID 以利組合完整連結
         const parentStoryId = parentStory.storyId;
         if (!parentStoryId) return null;
 
@@ -196,7 +279,6 @@
         const pAuthor = parentStory.data?.author?.data?.nickname || '原作者';
         const pUserUrl = `https://miin.cc/user?userId=${parentStory.data?.author?.userId}`;
 
-        // 解析引文標題與內容（處理 API 陣列與純字串格式）
         let pContent = '';
         if (Array.isArray(parentStory.data?.title)) {
             pContent = parentStory.data.title.map(t => t.text).join('');
@@ -204,12 +286,10 @@
             pContent = parentStory.data?.titleText || parentStory.data?.title || parentStory.data?.content || '無內文';
         }
 
-        // 建立最外層包裹的 <a> 標籤，讓整個區塊都可以點擊跳轉
         const quoteLink = document.createElement('a');
         quoteLink.id = 'pwa-injected-quote';
         quoteLink.href = parentStoryUrl;
 
-        // 優化點擊與滑鼠懸停 (Hover) 體感
         quoteLink.style = `
             display: block !important;
             background-color: #f2f2f7 !important;
@@ -224,11 +304,9 @@
             cursor: pointer !important;
         `;
 
-        // 加入 Hover 變深效果
         quoteLink.onmouseover = function() { this.style.backgroundColor = '#e5e5ea'; };
         quoteLink.onmouseout = function() { this.style.backgroundColor = '#f2f2f7'; };
 
-        // 內部 HTML 結構 (停止冒泡防止點擊作者名字時觸發外層跳轉)
         quoteLink.innerHTML = `
             <div style="margin-bottom: 8px !important; display: flex !important; align-items: center !important; gap: 6px !important;">
                 <span style="font-size: 11px !important; background: #5b5ee8 !important; color: #ffffff !important; padding: 2px 6px !important; border-radius: 4px !important; font-weight: bold !important;">[轉錄]</span>
@@ -268,21 +346,19 @@
 
     async function fetchQuoteNode(storyId) {
         try {
-            // 1. 原地等待 fetch 回應
             const res = await fetch(`https://api.miin.cc/mobile/story/v5/page?storyId=${storyId}&commentLimit=0&newsSourceLimit=0&socialSourceLimit=0&relatedStoryLimit=0&factSourceLimit=0&nationSourceLimit=0`);
             const resData = await res.json();
 
             const parentStory = resData?.parentStory || resData?.story?.parentStory;
 
             if (parentStory && parentStory.data) {
-                console.log(`🎯 [PWA] 成功偵測到轉文，指向原始文章: ${parentStory.storyId}`);
+                console.log(`🎯 [PWA] 成功偵測到轉錄，指向原始文章: ${parentStory.storyId}`);
                 embeddedquote = true;
-                // 2. 拿到資料後，直接產生物件並回傳給外層
                 return parentStory;
             }
-            return null; // 沒引文就回傳 null
+            return null;
         } catch (err) {
-            console.error("❌ [PWA] 撈取文章內頁轉文失敗:", err);
+            console.error("❌ [PWA] 撈取文章內頁轉錄失敗:", err);
             return null;
         }
     }
@@ -300,13 +376,11 @@
 
     function mainStory() {
         const path = location.pathname;
-        // 確保只在 trend (趨勢) 頁面執行
         if (!path.endsWith('trend')) return;
 
         const main = document.querySelector('main[class^="order-2"]');
         if (!main) return;
 
-        // 🌟 關鍵修正 1：利用 CSS 選擇器 :not() 直接過濾掉已經處理過的文章，避免無限重複抓取
         const stories = main.querySelectorAll('a[href^="/story/"]:not([data-quote-fetched])');
 
         stories.forEach(story => {
@@ -328,7 +402,7 @@
                             }
                         }
                         const p=document.createElement('div');
-                        p.innerHTML='<div style="padding-left: 20px;">[轉錄]'+pContent+'</div>';
+                        p.innerHTML='<div style="padding-left: 20px;">[轉錄]'+pContent.replace(/\uFFFC/g, '')+'</div>';
                         between.after(p);
                         console.log(`✅ [PWA] 加入轉錄: ${storyId}`);
                     }
