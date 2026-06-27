@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.3.0
+// @version      0.4.0
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -13,6 +13,12 @@
 
 (function() {
     'use strict';
+
+    unsafeWindow.APP_CONFIG = {
+        VERSION: "4.9.11",
+        USER_AGENT_STRING: "Miin/Android-4.9.11"
+    };
+
     let fetchdata=false,embeddedquote=false;
     const fsnormal=localStorage.getItem('miin_fs') || 16,
           fscolor=localStorage.getItem('miin_fscolor') || '#6AAFD8',
@@ -24,38 +30,13 @@
 
     unsafeWindow.validToken = null;
 
-    // 取token
-    const originalFetch = window.fetch;
-    window.fetch = function(...args) {
-        if(unsafeWindow.validToken)return originalFetch.apply(this, args);
-        const [url, options] = args;
-
-        if (options && options.headers) {
-            let authHeader = null;
-            // 判斷 headers 是 Headers 物件還是普通的 JS Object
-            if (options.headers instanceof Headers || typeof options.headers.get === 'function') {
-                authHeader = options.headers.get('authorization') || options.headers.get('Authorization');
-            } else {
-                authHeader = options.headers['authorization'] || options.headers['Authorization'] ||
-                    options.headers['authorization'.toLowerCase()];
-            }
-
-            // 只要發現 Bearer 開頭的標頭就直接抓起來 (不限定網址，防止相對路徑漏抓)
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                unsafeWindow.validToken = authHeader.replace('Bearer ', '');
-                console.log("🎯 [Fetch 攔截器] 成功捕獲活體 Token！");
-            }
-        }
-        return originalFetch.apply(this, args);
-    };
-
-    // 2. 攔截 XMLHttpRequest (XHR / Axios) 取token
     const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
         if(unsafeWindow.validToken)return originalSetRequestHeader.apply(this, arguments);
         if (header.toLowerCase() === 'authorization' && value.startsWith('Bearer ')) {
             unsafeWindow.validToken = value.replace('Bearer ', '');
-            console.log("🎯 [XHR 攔截器] 成功捕獲活體 Token！");
+            console.log("🎯 [XHR 攔截器] 成功取得 Token！暫存50分鐘");
+            setTimeout(()=>{unsafeWindow.validToken='';},50*60*1000);
         }
         return originalSetRequestHeader.apply(this, arguments);
     };
@@ -73,12 +54,9 @@
         if (typeof unsafeWindow.validToken !== 'undefined' && unsafeWindow.validToken) {
             return unsafeWindow.validToken;
         }
-        const cookies = document.cookie.split(';');
-        const targetCookies = cookies.map(c => c.trim()).filter(c => c.startsWith('miin-auth='));
-        if (targetCookies.length > 0) return targetCookies.pop().substring(10);
-
     }
 
+    //==========Profile data==========
     // 🌟 API：取得使用者個人資料 (掛載到全域供 UI 腳本呼叫)
     unsafeWindow.fetchMiinProfile = async function() {
         const token = getMiinToken();
@@ -89,7 +67,7 @@
             url: "https://api.miin.cc/mobile/v4/user/profile",
             headers: {
                 "authorization": `Bearer ${token}`,
-                "x-user-agent": "Miin/Android-4.9.9",
+                "x-user-agent": unsafeWindow.APP_CONFIG.USER_AGENT_STRING,
                 "user-agent": "okhttp/4.12.0"
             },
             onload: (res) => resolve(res.status === 200 ? JSON.parse(res.responseText).user.data : null)
@@ -100,7 +78,7 @@
             url: "https://api.miin.cc/mobile/v4/setting/me",
             headers: {
                 "authorization": `Bearer ${token}`,
-                "x-user-agent": "Miin/Android-4.9.9",
+                "x-user-agent": unsafeWindow.APP_CONFIG.USER_AGENT_STRING,
                 "user-agent": "okhttp/4.12.0"
             },
             onload: (res) => resolve(res.status === 200 ? JSON.parse(res.responseText).me.data : null)
@@ -108,9 +86,12 @@
 
         if (!meRes) return null;
 
-        return {...res, cover: meRes.cover}; // 直接回傳包含 intro, avatar, cover 的完整物件
+        return {...res, cover: meRes.cover};
+        // 直接回傳包含 intro, avatar, cover 的完整物件
     };
+    //==============================
 
+    //==========modify searchh page==========
     function injectExploreContent() {
         const search = window.location.href;
         const pwaec=document.getElementById('pwa-explore-container');
@@ -262,6 +243,31 @@
         container.innerHTML = html;
         return container;
     }
+    async function checkAndInjectStoryQuote() {
+        if (window.location.pathname.indexOf('/story/') < 0){
+            embeddedquote=false;
+            return;
+        }
+
+        const mainContentTarget = document.querySelector('[class="py-2"]');
+
+        if (mainContentTarget && !document.getElementById('pwa-injected-quote')) {
+            const urlParts = window.location.pathname.split('/');
+            const storyId = urlParts[urlParts.length - 1];
+
+            if ((!storyId || isNaN(storyId)) && embeddedquote) return;
+
+            const quoteNode=await fetchQuoteNode(storyId);
+
+            if (quoteNode) {
+                const node=createEmbeddedQuoteNode(quoteNode);
+                if(node)mainContentTarget.appendChild(node);
+            }
+
+        }
+    }
+
+    //==============================
 
     function checkIsMobile() {
         const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
@@ -320,30 +326,6 @@
         return quoteLink;
     }
 
-    async function checkAndInjectStoryQuote() {
-        if (window.location.pathname.indexOf('/story/') < 0){
-            embeddedquote=false;
-            return;
-        }
-
-        const mainContentTarget = document.querySelector('[class="py-2"]');
-
-        if (mainContentTarget && !document.getElementById('pwa-injected-quote')) {
-            const urlParts = window.location.pathname.split('/');
-            const storyId = urlParts[urlParts.length - 1];
-
-            if ((!storyId || isNaN(storyId)) && embeddedquote) return;
-
-            const quoteNode=await fetchQuoteNode(storyId);
-
-            if (quoteNode) {
-                const node=createEmbeddedQuoteNode(quoteNode);
-                if(node)mainContentTarget.appendChild(node);
-            }
-
-        }
-    }
-
     async function fetchQuoteNode(storyId) {
         try {
             const res = await fetch(`https://api.miin.cc/mobile/story/v5/page?storyId=${storyId}&commentLimit=0&newsSourceLimit=0&socialSourceLimit=0&relatedStoryLimit=0&factSourceLimit=0&nationSourceLimit=0`);
@@ -363,6 +345,7 @@
         }
     }
 
+    //==========mainstory Quote story==========
     function isInViewport(el) {
         const rect = el.getBoundingClientRect();
         return (rect.top <= (window.innerHeight || document.documentElement.clientHeight) + 200 && rect.bottom >= -200);
@@ -418,5 +401,116 @@
         injectExploreContent();
         checkAndInjectStoryQuote();
     }).observe(document.body?document.body:document, { childList: true, subtree: true });
+    //==============================
 
+    //========ChatRoom========//
+    // 🌟 核心：封裝 Chat API 請求器
+    function fetchChatAPI(endpoint, method = 'GET', body = null) {
+        const token = unsafeWindow.validToken;
+        if (!token) {
+            console.error("等待抓取Token");
+            return Promise.resolve(null);
+        }
+
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: method,
+                url: `https://api.miin.cc/mobile/chat/v6/${endpoint}`,
+                headers: {
+                    "authorization": `Bearer ${token}`,
+                    "accept": "application/json",
+                    "x-request-id": generateUUID(),
+                    "x-session-id": generateUUID(),
+                    "x-accept-language": "zh-hant",
+                    "x-user-agent": unsafeWindow.APP_CONFIG.USER_AGENT_STRING,
+                    "user-agent": "okhttp/4.12.0",
+                    "content-type": body ? "application/json; charset=UTF-8" : undefined
+                },
+                data: body ? JSON.stringify(body) : undefined,
+                onload: (res) => {
+                    if (res.status >= 200 && res.status < 300) {
+                        resolve(JSON.parse(res.responseText));
+                    } else {
+                        console.error(`❌ Chat API 錯誤 [${res.status}]:`, res.responseText);
+                        reject(res.status);
+                    }
+                },
+                onerror: reject
+            });
+        });
+    }
+
+
+    // 🌟 開放全域 API 供 UI 腳本呼叫
+    unsafeWindow.miinChatAPI = {
+        // 取得聯絡人列表
+        getUserList: async (cursor = '') => {
+            return await fetchChatAPI(`user:list?limit=50&cursor=${encodeURIComponent(cursor)}`);
+        },
+        // 搜尋聯絡人
+        searchUsers: async (query) => {
+            return await fetchChatAPI(`user:search?query=${encodeURIComponent(query)}&limit=50`);
+        },
+        // 取得聊天室歷史訊息
+        getMessages: async (roomId, cursor = '') => {
+            return await fetchChatAPI(`message:list?roomId=${roomId}&limit=50&cursor=${encodeURIComponent(cursor)}`);
+        },
+        sendMessage: async (roomId, text) => {
+            const body = {
+                "audio": null, "image": null, "miinlink": null,
+                "roomId": roomId,
+                "text": [{ "query": null, "text": text, "type": "plain", "url": null, "userId": null }],
+                "type": "text", "video": null
+            };
+            // 確保這裡有 return，這樣發送成功後才能拿到伺服器回傳的真實訊息物件
+            return await fetchChatAPI('message', 'POST', body);
+        },
+        getUploadUrl: async () => {
+            return await fetchChatAPI('message/image:upload', 'POST', {
+                "mimeType": "image/jpeg",
+                "supportedProviders": ["GCS"]
+            });
+        },
+        uploadToGCS: (file, uploadUrl, requiredHeaders) => {
+            return new Promise((resolve, reject) => {
+                const headers = {};
+                requiredHeaders.forEach(h => headers[h.key] = h.value);
+                GM_xmlhttpRequest({
+                    method: 'PUT',
+                    url: uploadUrl,
+                    headers: headers,
+                    data: file, // 直接傳送 File 物件
+                    onload: (res) => {
+                        if (res.status >= 200 && res.status < 300) resolve();
+                        else reject(`上傳失敗 [${res.status}]: ${res.statusText}`);
+                    },
+                    onerror: reject
+                });
+            });
+        },
+        sendImageMessage: async (roomId, uploadKey, width, height) => {
+            const body = {
+                "audio": null,
+                "image": {
+                    "key": uploadKey,
+                    "width": parseInt(width),
+                    "height": parseInt(height)
+                },
+                "miinlink": null,
+                "roomId": roomId,
+                "text": null,
+                "type": "image",
+                "video": null
+            };
+            return await fetchChatAPI('message', 'POST', body);
+        },
+        getNotificationStatus: async () => {
+            return await fetchChatAPI('bell', 'GET');
+        },
+        getRoomList: async (cursor = '') => {
+            // room:list 是取得聊天室列表最準確的方式
+            return await fetchChatAPI(`room:list?limit=50&cursor=${encodeURIComponent(cursor)}`);
+        }
+    };
+    //chatroom
 })();
