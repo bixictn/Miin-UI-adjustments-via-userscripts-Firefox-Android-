@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Profile Data
-// @version      0.1.0
+// @version      0.1.1
 // @match        https://miin.cc/*
 // @description  Miin Profile Data
 // @grant        GM_xmlhttpRequest
@@ -42,7 +42,7 @@
                 headers: {
                     "authorization": `Bearer ${token}`, "accept": "application/json",
                     "x-request-id": generateUUID(), "x-session-id": generateUUID(),
-                    "x-accept-language": "zh-hant", "x-user-agent": "Miin/Android-4.9.9",
+                    "x-accept-language": "zh-hant", "x-user-agent": unsafeWindow.APP_CONFIG.USER_AGENT_STRING,
                     "content-type": "application/json; charset=UTF-8", "user-agent": "okhttp/4.12.0"
                 },
                 data: JSON.stringify({ "mimeType": imageFile.type || "image/jpeg", "supportedProviders": ["GCS"] }),
@@ -117,7 +117,7 @@
                     method: "PATCH", url: "https://api.miin.cc/mobile/v4/user/profile",
                     headers: {
                         "authorization": `Bearer ${token}`, "content-type": "application/json; charset=UTF-8",
-                        "x-user-agent": "Miin/Android-4.9.9", "user-agent": "okhttp/4.12.0"
+                        "x-user-agent": unsafeWindow.APP_CONFIG.USER_AGENT_STRING, "user-agent": "okhttp/4.12.0"
                     },
                     data: JSON.stringify(payload),
                     onload: resolve, onerror: reject
