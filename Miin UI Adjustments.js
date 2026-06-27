@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Adjustments
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0
+// @version      0.4.0.1
 // @description  Miin UI Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -332,11 +332,7 @@
     body.viewer-scroll-locked,
     body.panel-scroll-locked {
         /* 2. 核心鎖定 */
-        overflow: hidden !important;
-        position: fixed !important;
-        width: 100% !important;
-        height: 100vh !important;
-
+        
         overscroll-behavior: none !important;
         padding-right: 0px !important;
     }
@@ -454,7 +450,7 @@
                     twspan.style.setProperty('display', 'flex', 'important');
                     twspan.style.setProperty('height', '60px', 'important');
                     twspan.style.setProperty('width', '60px', 'important');
-                    twspan.style.setProperty('font-size', '49px', 'important');
+                    twspan.style.setProperty('font-size', '49px');
                     twspan.style.setProperty('margin', '0px 5px 0px 0px', 'important');
                     twspan.style.setProperty('line-height', '58px', 'important');
                     twspan.style.setProperty('align-items', 'center', 'important');
@@ -465,7 +461,7 @@
                         emoji.style.setProperty('line-height', '58px', 'important');
                         emoji.style.setProperty('height', '54px', 'important');
                         emoji.style.setProperty('width', '54px', 'important');
-                        emoji.style.setProperty('font-size', '48px', 'important');
+                        emoji.style.setProperty('font-size', '48px');
                         emoji.style.setProperty('align-items', 'center', 'important');
                         emoji.style.setProperty('justify-content', 'center', 'important');
                     }
