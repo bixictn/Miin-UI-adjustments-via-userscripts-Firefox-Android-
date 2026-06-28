@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Adjustments
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0.1
+// @version      0.4.0.2
 // @description  Miin UI Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -332,7 +332,11 @@
     body.viewer-scroll-locked,
     body.panel-scroll-locked {
         /* 2. 核心鎖定 */
-        
+        ${isMobile?"":`
+        overflow: hidden !important;
+        position: fixed !important;
+        width: 100% !important;
+        height: 100vh !important;`}
         overscroll-behavior: none !important;
         padding-right: 0px !important;
     }
