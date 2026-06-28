@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.4.2.1
+// @version      0.4.2.2
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -408,7 +408,7 @@
 
     //========ChatRoom========//
     // 🌟 核心：封裝 Chat API 請求器
-    let authFrame;
+    let authFrame='';
     function fetchChatAPI(endpoint, method = 'GET', body = null) {
         const token = getMiinToken();
         if (!token) {
@@ -428,7 +428,8 @@
                     authFrame.onload = () => {
                         console.log("背景驗證觸發完成。");
                         setTimeout(() => {
-                            authFrame.remove();
+                            authFrame.src='';
+                            authFrame='';
                         }, 3000);
                     };
                 }
