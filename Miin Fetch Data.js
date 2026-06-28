@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.4.2
+// @version      0.4.2.1
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -61,7 +61,7 @@
     }
 
     //==========Profile data==========
-    // 🌟 API：取得使用者個人資料 
+    // 🌟 API：取得使用者個人資料
     unsafeWindow.fetchMiinProfile = async function() {
         const token = getMiinToken();
         if (!token) return null;
@@ -413,6 +413,27 @@
         const token = getMiinToken();
         if (!token) {
             console.error("等待抓取Token");
+            if(!authFrame){
+                authFrame = document.createElement('iframe');
+                authFrame.id = 'auth-refresh-frame';
+                authFrame.style.display = 'none';
+                document.body.appendChild(authFrame);
+
+                // 執行背景驗證的邏輯
+                function performAuthRefresh() {
+                    console.log("偵測到需要進行背景驗證...");
+
+                    authFrame.src = '/feed/trend?t=' + Date.now(); // 加上時間戳記防止快取
+
+                    authFrame.onload = () => {
+                        console.log("背景驗證觸發完成。");
+                        setTimeout(() => {
+                            authFrame.remove();
+                        }, 3000);
+                    };
+                }
+                performAuthRefresh();
+            }
             return Promise.resolve(null);
         }
 
@@ -437,27 +458,6 @@
                     } else {
                         console.error(`❌ Chat API 錯誤 [${res.status}]:`, res.responseText);
                         reject(res.status);
-                        if(!authFrame){
-                            authFrame = document.createElement('iframe');
-                            authFrame.id = 'auth-refresh-frame';
-                            authFrame.style.display = 'none'; 
-                            document.body.appendChild(authFrame);
-
-                            // 執行背景驗證的邏輯
-                            function performAuthRefresh() {
-                                console.log("偵測到需要進行背景驗證...");
-
-                                authFrame.src = '/feed/trend?t=' + Date.now(); // 加上時間戳記防止快取
-
-                                authFrame.onload = () => {
-                                    console.log("背景驗證觸發完成。");
-                                    setTimeout(() => {
-                                        authFrame.remove();
-                                    }, 3000);
-                                };
-                            }
-                            performAuthRefresh();
-                        }
                     }
                 },
                 onerror: reject
