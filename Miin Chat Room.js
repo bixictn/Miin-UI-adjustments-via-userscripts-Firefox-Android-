@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin Chat Room
 // @namespace    http://tampermonkey.net/
-// @version      0.2.0
+// @version      0.2.5
 // @description  Miin Chat Room
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -163,7 +163,7 @@
         <div id="chat-panel">
             <div id="view-list" class="chat-view active">
                 <div class="chat-header">
-                    <span style="font-weight: bold; font-size: 18px;">訊息</span>
+                    <span style="font-weight: bold; font-size: 18px;">電波</span>
                     <button id="close-chat-btn" class="chat-btn" style="border:none !important;outline:none;">✖</button>
                 </div>
                 <div style="padding: 10px; border-bottom: 1px solid #333;">
@@ -189,7 +189,7 @@
                       <span id="upload-icon-idle" style="${checkIsMobile()?"width:32px;height:32px;":"width:40px;height:40px;"}">🏞️</span>
                       <span id="upload-icon-loading" style="display:none;${checkIsMobile()?"width:32px;height:32px;":"width:40px;height:40px;"}" class="loading-spin">🌀</span>
                    </button>
-                    <input type="text" id="chat-text-input" placeholder="輸入訊息...">
+                    <input type="text" id="chat-text-input" placeholder="發送電波...">
                     <button id="chat-send-btn" class="chat-btn" style="border:none !important;outline:none;">➤</button>
                 </div>
             </div>
@@ -221,6 +221,7 @@
     // 3. 畫面切換邏輯
     // ==========================================
     window.addEventListener('popstate', (e) => {
+
         const state = e.state;
         if (state && state.miinChatPanel) {
             panel.style.display = 'flex';
@@ -312,7 +313,7 @@
         }
     }
 
-    // 每 15 秒檢查一次通知
+    // 每 15 秒檢查一次通知，不用太頻繁
     setInterval(checkNotifications, 15000);
     setTimeout(checkNotifications,500); // 初始執行一次
 
@@ -328,7 +329,7 @@
             const res = query ? await window.miinChatAPI.searchUsers(query) : await window.miinChatAPI.getRoomList();
             userListContainer.innerHTML = '';
 
-            // 整理資料：room:list 的資料結構可能跟 search 不同
+            // 整理資料：room:list 的資料結構可能跟 search 不同，我們做簡單的轉換
             const list = res.rooms || res.users || [];
 
             if (list.length === 0) {
@@ -378,8 +379,9 @@
     // ==========================================
     // 5. API 串接與渲染：聊天室訊息
     // ==========================================
-    let lastRenderedDateString = null; // 
+    let lastRenderedDateString = null; // 🌟 新增：用來記錄最後渲染的日期
 
+    // 🌟 新增：時間格式化工具
     function formatTime(timestamp) {
         const d = new Date(timestamp * 1000);
         const hh = String(d.getHours()).padStart(2, '0');
@@ -451,7 +453,7 @@
                 dateDivider.className = 'msg-date-divider';
                 dateDivider.textContent = dateString;
                 msgListContainer.appendChild(dateDivider);
-                lastRenderedDateString = dateString;
+                lastRenderedDateString = dateString; // 更新為最新日期
             }
 
             // 2. 處理訊息內容
@@ -537,25 +539,20 @@
         msgListContainer.scrollTop = msgListContainer.scrollHeight;
 
         try {
-            // 2. 等待伺服器回應
             const res = await window.miinChatAPI.sendMessage(currentRoomId, text);
 
-            // 3. 【關鍵】把伺服器回傳的真實 ID 加入清單
             if (res && res.message && res.message.messageId) {
                 renderedMessageIds.add(res.message.messageId);
-                console.log("已成功加入 ID:", res.message.messageId);
+                console.log("已成功加入 ID:", res.message.messageId); 
             }
 
         } catch (err) {
             console.error("發送失敗", err);
-            // 如果失敗，你可能需要從畫面上移除那則訊息，或提示使用者
         }
     }
 
-    // 綁定點擊事件
     sendBtn.addEventListener('click', handleSendMessage);
 
-    // 綁定 Enter 鍵 (Enter 發送，Shift+Enter 換行)
     textInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -570,7 +567,6 @@
     fileInput.style.display = 'none';
     document.body.appendChild(fileInput);
 
-    // 綁定圖示按鈕點擊事件
     document.getElementById('chat-upload-img-btn').addEventListener('click', () => {
         fileInput.click();
     });
@@ -585,7 +581,6 @@
         });
     }
 
-    // 處理檔案選擇
     const iconIdle = document.getElementById('upload-icon-idle');
     const iconLoading = document.getElementById('upload-icon-loading');
     const uploadBtn = document.getElementById('chat-upload-img-btn');
@@ -594,9 +589,8 @@
         const file = e.target.files[0];
         if (!file || !currentRoomId) return;
 
-        // 1. 開始上傳：切換顯示 
         iconIdle.style.display = 'none';
-        iconLoading.style.display = 'flex'; // 改為 flex 確保置中
+        iconLoading.style.display = 'flex';
         uploadBtn.style.pointerEvents = 'none';
 
         try {
@@ -613,23 +607,32 @@
             alert("圖片發送失敗");
         } finally {
             iconLoading.style.display = 'none';
-            iconIdle.style.display = 'flex';
+            iconIdle.style.display = 'flex'; 
             uploadBtn.style.pointerEvents = 'auto';
         }
     });
 
-    if (checkIsMobile()) {
-        const injectFabInterval = setInterval(() => {
+    const chatFab = document.getElementById('chat-fab');
+
+    const injectFabInterval = setInterval(() => {
+        if (checkIsMobile()) {
             const postingLink = document.querySelector('footer a[href="/posting"]');
-            const chatFab = document.getElementById('chat-fab');
 
-            if (postingLink && chatFab) {
+            if (chatFab.nextElementSibling !== postingLink) {
                 clearInterval(injectFabInterval); 
-
                 postingLink.insertAdjacentElement('afterend', chatFab);
-
-                console.log("Chat FAB 已成功嵌入導覽列");
             }
-        }, 500); 
-    }
+        }
+    }, 2000);
+    window.addEventListener('popstate', (e) => {
+        setTimeout(()=>{
+            if (checkIsMobile()) {
+                const postingLink = document.querySelector('footer a[href="/posting"]');
+                if (chatFab.nextElementSibling !== postingLink) {                   
+                    postingLink.insertAdjacentElement('afterend', chatFab);
+                }
+            }
+        },1000);
+
+    });
 })();
