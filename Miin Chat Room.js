@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin Chat Room
 // @namespace    http://tampermonkey.net/
-// @version      0.2.5
+// @version      0.2.5.1
 // @description  Miin Chat Room
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -310,6 +310,8 @@
             }
         } catch (e) {
             console.error("檢查通知失敗", e);
+            unsafeWindow.validToken = '';
+            localStorage.setItem('miin_valid_token', '');
         }
     }
 
@@ -424,6 +426,8 @@
                 renderMessages(res.messages);
             } catch (err) {
                 console.error("輪詢失敗", err);
+                unsafeWindow.validToken = '';
+                localStorage.setItem('miin_valid_token', '');
             }
         }
 
@@ -543,7 +547,7 @@
 
             if (res && res.message && res.message.messageId) {
                 renderedMessageIds.add(res.message.messageId);
-                console.log("已成功加入 ID:", res.message.messageId); 
+                console.log("已成功加入 ID:", res.message.messageId);
             }
 
         } catch (err) {
@@ -607,7 +611,7 @@
             alert("圖片發送失敗");
         } finally {
             iconLoading.style.display = 'none';
-            iconIdle.style.display = 'flex'; 
+            iconIdle.style.display = 'flex';
             uploadBtn.style.pointerEvents = 'auto';
         }
     });
@@ -619,7 +623,7 @@
             const postingLink = document.querySelector('footer a[href="/posting"]');
 
             if (chatFab.nextElementSibling !== postingLink) {
-                clearInterval(injectFabInterval); 
+                clearInterval(injectFabInterval);
                 postingLink.insertAdjacentElement('afterend', chatFab);
             }
         }
@@ -628,7 +632,7 @@
         setTimeout(()=>{
             if (checkIsMobile()) {
                 const postingLink = document.querySelector('footer a[href="/posting"]');
-                if (chatFab.nextElementSibling !== postingLink) {                   
+                if (chatFab.nextElementSibling !== postingLink) {
                     postingLink.insertAdjacentElement('afterend', chatFab);
                 }
             }
