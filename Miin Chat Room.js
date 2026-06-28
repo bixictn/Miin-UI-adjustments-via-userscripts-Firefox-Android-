@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin Chat Room
 // @namespace    http://tampermonkey.net/
-// @version      0.2.5.2
+// @version      0.2.5.3
 // @description  Miin Chat Room
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -310,8 +310,6 @@
             }
         } catch (e) {
             console.error("檢查通知失敗", e);
-            window.validToken = '';
-            localStorage.setItem('miin_valid_token', '');
         }
     }
 
@@ -426,8 +424,6 @@
                 renderMessages(res.messages);
             } catch (err) {
                 console.error("輪詢失敗", err);
-                window.validToken = '';
-                localStorage.setItem('miin_valid_token', '');
             }
         }
 
