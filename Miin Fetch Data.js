@@ -33,9 +33,6 @@
     const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
 
-        // 移除那行 if(unsafeWindow.validToken) return...
-        // 讓每一次發送 header 都必須乖乖經過下面的檢查！
-
         if (header.toLowerCase() === 'authorization' && value.startsWith('Bearer ')) {
             const tokenInHeader = value.replace('Bearer ', '');
 
@@ -47,7 +44,6 @@
             }
         }
 
-        // 檢查完畢，放行請求
         return originalSetRequestHeader.apply(this, arguments);
     };
 
@@ -65,7 +61,7 @@
     }
 
     //==========Profile data==========
-    // 🌟 API：取得使用者個人資料 (掛載到全域供 UI 腳本呼叫)
+    // 🌟 API：取得使用者個人資料 
     unsafeWindow.fetchMiinProfile = async function() {
         const token = getMiinToken();
         if (!token) return null;
@@ -95,7 +91,6 @@
         if (!meRes) return null;
 
         return {...res, cover: meRes.cover};
-        // 直接回傳包含 intro, avatar, cover 的完整物件
     };
     //==============================
 
@@ -445,20 +440,17 @@
                         if(!authFrame){
                             authFrame = document.createElement('iframe');
                             authFrame.id = 'auth-refresh-frame';
-                            authFrame.style.display = 'none'; // 徹底隱藏，完全不佔用空間
+                            authFrame.style.display = 'none'; 
                             document.body.appendChild(authFrame);
 
                             // 執行背景驗證的邏輯
                             function performAuthRefresh() {
                                 console.log("偵測到需要進行背景驗證...");
 
-                                // 改變 iframe 的 src 來觸發頁面載入
                                 authFrame.src = '/feed/trend?t=' + Date.now(); // 加上時間戳記防止快取
 
-                                // 設定一個短暫的載入期，載入完成後隱藏起來
                                 authFrame.onload = () => {
                                     console.log("背景驗證觸發完成。");
-                                    // 為了節省記憶體，載入完成後清空 iframe 內容
                                     setTimeout(() => {
                                         authFrame.remove();
                                     }, 3000);
@@ -541,7 +533,6 @@
             return await fetchChatAPI('bell', 'GET');
         },
         getRoomList: async (cursor = '') => {
-            // room:list 是取得聊天室列表最準確的方式
             return await fetchChatAPI(`room:list?limit=50&cursor=${encodeURIComponent(cursor)}`);
         }
     };
