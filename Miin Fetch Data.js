@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.4.2.5
+// @version      0.4.2.6
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -405,13 +405,19 @@
 
     //========ChatRoom========//
     // 🌟 核心：封裝 Chat API 請求器
-    let authFrame='';
-    function fetchChatAPI(endpoint, method = 'GET', body = null) {
-        const token = getMiinToken();
-        if (!token) {
-            console.error("等待抓取Token");
-            return Promise.resolve(null);
+    // 🌟 增加一個鎖，防止重複刷新
+    let isRefreshing = false;
+    let refreshQueue = []; // 用來存因為 Token 過期而失敗、等待重試的請求
+
+    async function fetchChatAPI(endpoint, method = 'GET', body = null) {
+        if (isRefreshing) {
+            return new Promise((resolve) => {
+                refreshQueue.push(() => resolve(fetchChatAPI(endpoint, method, body)));
+            });
         }
+
+        const token = getMiinToken();
+        if (!token) return Promise.resolve(null);
 
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -429,39 +435,58 @@
                 },
                 data: body ? JSON.stringify(body) : undefined,
                 onload: (res) => {
-                    if (res.status >= 200 && res.status < 300) {
+                    if (res.status === 401) {
+                        handle401Error(endpoint, method, body, resolve, reject);
+                    } else if (res.status >= 200 && res.status < 300) {
                         resolve(JSON.parse(res.responseText));
                     } else {
-                        console.error(`❌ Chat API 錯誤 [${res.status}]:`, res.responseText);
                         reject(res.status);
-                        if(!authFrame){
-                            authFrame = document.createElement('iframe');
-                            authFrame.id = 'auth-refresh-frame';
-                            authFrame.style.display = 'none';
-                            document.body.appendChild(authFrame);
-
-                            // 執行背景驗證的邏輯
-                            function performAuthRefresh() {
-                                console.log("偵測到需要進行背景驗證...");
-
-                                authFrame.src = '/feed/trend?t=' + Date.now(); // 加上時間戳記防止快取
-
-                                authFrame.onload = () => {
-                                    console.log("背景驗證觸發完成。");
-                                    setTimeout(() => {
-                                        document.body.removeChild(authFrame);
-                                        authFrame='';
-                                    }, 3000);
-                                };
-                            }
-                            performAuthRefresh();
-                        }
                     }
                 },
                 onerror: reject
             });
         });
     }
+
+    function handle401Error(endpoint, method, body, resolve, reject) {
+        if (isRefreshing) {
+            // 如果已經有人在刷新了，直接排隊
+            refreshQueue.push(() => resolve(fetchChatAPI(endpoint, method, body)));
+            return;
+        }
+
+        isRefreshing = true;
+        console.warn("⚠️ Token 過期，啟動刷新程序...");
+
+        performAuthRefresh().then(() => {
+            isRefreshing = false;
+            // 執行佇列中的所有請求
+            refreshQueue.forEach(cb => cb());
+            refreshQueue = [];
+        });
+    }
+
+    function performAuthRefresh(){
+        return new Promise((resolve) => {
+            let authFrame = document.createElement('iframe');
+            authFrame.id = 'auth-refresh-frame';
+            authFrame.style.display = 'none';
+            document.body.appendChild(authFrame);
+
+            console.log("偵測到需要進行背景驗證...");
+            authFrame.src = '/feed/trend?t=' + Date.now();
+
+            authFrame.onload = () => {
+                console.log("背景驗證觸發完成。");
+                // 🌟 當動作完成，呼叫 resolve() 告訴 .then() 可以繼續了
+                resolve();
+                setTimeout(() => {
+                    document.body.removeChild(authFrame);
+                }, 1000);
+            };
+        });
+    }
+
 
 
     // 🌟 開放全域 API 供 UI 腳本呼叫
