@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.4.2.2
+// @version      0.4.2.3
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -428,7 +428,7 @@
                     authFrame.onload = () => {
                         console.log("背景驗證觸發完成。");
                         setTimeout(() => {
-                            authFrame.src='';
+                            document.body.removeChild(authFrame);
                             authFrame='';
                         }, 3000);
                     };
