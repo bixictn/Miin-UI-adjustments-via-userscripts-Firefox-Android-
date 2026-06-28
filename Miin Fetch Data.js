@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.4.2.3
+// @version      0.4.2.5
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -28,8 +28,6 @@
           bgcolor2=localStorage.getItem('miin_bgcolor2') ||'#111111',
           bubblecolor=localStorage.getItem('miin_bubblecolor') ||'#5F7B84';
 
-    unsafeWindow.validToken = null;
-
     const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
 
@@ -37,8 +35,7 @@
             const tokenInHeader = value.replace('Bearer ', '');
 
             // 只要經過的 Token 跟我們手上的不一樣，就代表網站換發了新 Token，立刻更新！
-            if (unsafeWindow.validToken !== tokenInHeader) {
-                unsafeWindow.validToken = tokenInHeader;
+            if (localStorage.getItem('miin_valid_token') !== tokenInHeader) {
                 localStorage.setItem('miin_valid_token', tokenInHeader);
                 console.log("🎯 [XHR 攔截器] 抓到最新 Token 並已儲存至 LocalStorage！");
             }
@@ -57,7 +54,7 @@
     }
 
     function getMiinToken() {
-        return unsafeWindow.validToken || localStorage.getItem('miin_valid_token')
+        return localStorage.getItem('miin_valid_token');
     }
 
     //==========Profile data==========
@@ -413,28 +410,6 @@
         const token = getMiinToken();
         if (!token) {
             console.error("等待抓取Token");
-            if(!authFrame){
-                authFrame = document.createElement('iframe');
-                authFrame.id = 'auth-refresh-frame';
-                authFrame.style.display = 'none';
-                document.body.appendChild(authFrame);
-
-                // 執行背景驗證的邏輯
-                function performAuthRefresh() {
-                    console.log("偵測到需要進行背景驗證...");
-
-                    authFrame.src = '/feed/trend?t=' + Date.now(); // 加上時間戳記防止快取
-
-                    authFrame.onload = () => {
-                        console.log("背景驗證觸發完成。");
-                        setTimeout(() => {
-                            document.body.removeChild(authFrame);
-                            authFrame='';
-                        }, 3000);
-                    };
-                }
-                performAuthRefresh();
-            }
             return Promise.resolve(null);
         }
 
@@ -459,6 +434,28 @@
                     } else {
                         console.error(`❌ Chat API 錯誤 [${res.status}]:`, res.responseText);
                         reject(res.status);
+                        if(!authFrame){
+                            authFrame = document.createElement('iframe');
+                            authFrame.id = 'auth-refresh-frame';
+                            authFrame.style.display = 'none';
+                            document.body.appendChild(authFrame);
+
+                            // 執行背景驗證的邏輯
+                            function performAuthRefresh() {
+                                console.log("偵測到需要進行背景驗證...");
+
+                                authFrame.src = '/feed/trend?t=' + Date.now(); // 加上時間戳記防止快取
+
+                                authFrame.onload = () => {
+                                    console.log("背景驗證觸發完成。");
+                                    setTimeout(() => {
+                                        document.body.removeChild(authFrame);
+                                        authFrame='';
+                                    }, 3000);
+                                };
+                            }
+                            performAuthRefresh();
+                        }
                     }
                 },
                 onerror: reject
