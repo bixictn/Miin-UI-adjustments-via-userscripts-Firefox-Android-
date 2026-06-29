@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin Chat Room
 // @namespace    http://tampermonkey.net/
-// @version      0.2.5.3
+// @version      0.2.6
 // @description  Miin Chat Room
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -195,7 +195,9 @@
             </div>
         </div>
     `;
+
     document.body.appendChild(chatContainer);
+
 
     function checkIsMobile() {
         const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
@@ -612,18 +614,40 @@
         }
     });
 
-    const chatFab = document.getElementById('chat-fab');
-
-    const injectFabInterval = setInterval(() => {
-        if (checkIsMobile()) {
-            const postingLink = document.querySelector('footer a[href="/posting"]');
-
-            if (chatFab.nextElementSibling !== postingLink) {
-                clearInterval(injectFabInterval);
-                postingLink.insertAdjacentElement('afterend', chatFab);
+    // 建立一個全域監控器，隨時應對登入/登出狀態的變化
+    let chatFab = document.getElementById('chat-fab');
+    const authStateObserver = new MutationObserver(() => {
+        // 尋找網頁上是否出現「登入」連結，這代表目前是「未登入」狀態
+        const login=document.querySelector('[href="/login"]');
+        if (login) {
+            chatFab.style.display="none";
+            if(login && localStorage.getItem('miin_valid_token')){
+                localStorage.removeItem('miin_valid_token');
+            }
+            historyDepth = 0;
+        } else {
+            if(!chatFab){
+                document.body.appendChild(chatContainer);
+                chatFab = document.getElementById('chat-fab');
+            }
+            chatFab.style.display="flex";
+            if (checkIsMobile()) {
+                const postingLink = document.querySelector('footer a[href="/posting"]');
+                if (postingLink) {
+                    if (postingLink.nextElementSibling !== chatFab) {
+                        postingLink.insertAdjacentElement('afterend', chatFab);
+                    }
+                }
             }
         }
-    }, 2000);
+    });
+
+    // 開始觀察整個網頁的變動
+    authStateObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
     window.addEventListener('popstate', (e) => {
         setTimeout(()=>{
             if (checkIsMobile()) {
