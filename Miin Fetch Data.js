@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.4.2.6
+// @version      0.4.2.7
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @connect      api.miin.cc
+// @connect      storage.googleapis.com
 // @run-at       document-start
 // @updateURL    https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20Fetch%20Data.js
 // @downloadURL  https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20Fetch%20Data.js
