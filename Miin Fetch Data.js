@@ -16,8 +16,8 @@
     'use strict';
 
     unsafeWindow.APP_CONFIG = {
-        VERSION: "4.9.12",
-        USER_AGENT_STRING: "Miin/Android-4.9.12"
+        VERSION: "4.9.13",
+        USER_AGENT_STRING: "Miin/Android-4.9.13"
     };
 
     let fetchdata=false,embeddedquote=false;
