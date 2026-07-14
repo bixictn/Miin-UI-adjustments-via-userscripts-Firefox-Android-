@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Miin UI Settings Panel
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0.1
+// @version      0.4.5
 // @description  Miin UI Settings Panel
 // @author       bixictn
 // @match        https://miin.cc/*
-// @grant        unsafeWindow
+// @grant        none
 // @updateURL    https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20UI%20Settings%20Panel.js
 // @downloadURL  https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20UI%20Settings%20Panel.js
 // ==/UserScript==
@@ -15,7 +15,7 @@
 
     let closingPanelByBack = false;
 
-    // 1. 樣式注入
+    // 1. 樣式
     const style = document.createElement('style');
     function checkIsMobile() {
         const hasCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
@@ -30,7 +30,7 @@
         .btn-group { display: flex; gap: 5px; margin-top: 10px; }
         [id$="btn"] { color: #D4AF37; border: 1px solid #777 !important; padding: 4px 8px; border-radius: 4px; cursor: pointer; background: #222; }
         [id$="btn"]:hover { background: #444; }
-        [role="menu"] { width: 56px !important; align-items: center;}
+        [role="menu"] { width: ${checkIsMobile()?"56px":"180px"}; !important; align-items: center;}
         [role="menuitem"] { height:42px !important; display: flex !important; align-items: center; padding: 5px !important; }
         .menu-item-primary:hover{ background-color:unset !important; }
         #miin-settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999998; display: none; }
@@ -113,8 +113,8 @@
         history.pushState({ ... (history.state || {}), uiSettingsPanel: true }, "");
 
         // 🌟 跨腳本呼叫資料層 API
-        if (typeof unsafeWindow.fetchMiinProfile === 'function') {
-            unsafeWindow.fetchMiinProfile().then(userData => {
+        if (typeof window.fetchMiinProfile === 'function') {
+            window.fetchMiinProfile().then(userData => {
                 if (userData) {
                     if(userData.cover.length>0)document.getElementById("cover_container").style.backgroundImage = `url('${userData.cover[0].url}')`;
                     if(userData.avatar.length>0)document.getElementById('avatar_img').src=userData.avatar[0].url;
@@ -193,11 +193,11 @@
         const nickname = document.getElementById('nickname_input').value;
         const intro = document.getElementById('intro_input').value;
 
-        if (typeof unsafeWindow.updateMiinProfileFull === 'function') {
+        if (typeof window.updateMiinProfileFull === 'function') {
             btn.textContent = "上傳並儲存中...";
             btn.disabled = true;
 
-            const success = await unsafeWindow.updateMiinProfileFull(
+            const success = await window.updateMiinProfileFull(
                 nickname,
                 intro,
                 pendingAvatarFile,
@@ -217,7 +217,7 @@
         }
     };
 
-    // 側邊選單注入按鈕 (呼叫全域 uploadMiinAvatar 邏輯維持不變)
+    // 選單加入按鈕 (呼叫全域 uploadMiinAvatar 邏輯維持不變)
     const menuObserver = new MutationObserver(() => {
         const menu = document.querySelector('[role="menu"]');
         if (!menu) return;
@@ -226,7 +226,7 @@
         if (templateItem && !menu.querySelector('#settings-trigger')) {
             // 👤 頭貼更換按鈕
             const aimItem = templateItem.cloneNode(true);
-            aimItem.id = 'aim-trigger'; aimItem.textContent = '👤';
+            aimItem.id = 'aim-trigger'; aimItem.textContent = '👤'+(checkIsMobile()?'':'個資設定');
             aimItem.style.borderTop = '1px solid #444'; aimItem.removeAttribute('href');
             aimItem.addEventListener('click', (e) => {
                 e.preventDefault(); e.stopPropagation();
@@ -239,7 +239,7 @@
 
             // 🎨 設定面板按鈕
             const settingsItem = templateItem.cloneNode(true);
-            settingsItem.id = 'settings-trigger'; settingsItem.textContent = '🎨';
+            settingsItem.id = 'settings-trigger'; settingsItem.textContent = '🎨'+(checkIsMobile()?'':'佈景設定');
             settingsItem.style.borderTop = '1px solid #444'; settingsItem.removeAttribute('href');
             settingsItem.onclick = (e) => {
                 e.preventDefault(); e.stopPropagation();
@@ -258,10 +258,10 @@
             if (item.dataset.processed === 'true') return;
 
             if (item.textContent.includes('個人電台')) {
-                item.textContent = '🎙️';
+                item.textContent = '🎙️'+(checkIsMobile()?'':'個人電台');
                 item.dataset.processed = 'true';
             } else if (item.textContent.includes('登出')) {
-                item.textContent = '➡️';
+                item.textContent = '➡️'+(checkIsMobile()?'':'登出');
                 item.dataset.processed = 'true';
             } else if (item.id === 'settings-trigger' || item.id === 'aim-trigger') {
                 item.dataset.processed = 'true';
@@ -270,16 +270,18 @@
     });
 
     // 🌟 監聽手機返回鍵手勢（popstate）
-    window.addEventListener('popstate', (e) => {
+    window.MiinDispatcher.register('SettingPanel', 100, (e) => {
         if (closingPanelByBack) {
             closingPanelByBack = false; // 解開安全鎖
-            return;
+            return true;
         }
 
         // 如果在歷史紀錄中發現設定面板被倒退了，立刻關閉畫面
         if (panel.style.display === 'block') {
             closePanel(true);
+            return true;
         }
+        return false;
     }, true);
 
 
@@ -294,4 +296,5 @@
 
 
     menuObserver.observe(document.body?document.body:document, { childList: true, subtree: true });
+
 })();
