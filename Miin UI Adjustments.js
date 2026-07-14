@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Adjustments
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0.2
+// @version      0.4.5
 // @description  Miin UI Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -454,7 +454,7 @@
                     twspan.style.setProperty('display', 'flex', 'important');
                     twspan.style.setProperty('height', '60px', 'important');
                     twspan.style.setProperty('width', '60px', 'important');
-                    twspan.style.setProperty('font-size', '49px');
+                    twspan.style.setProperty('font-size', '49px', 'important');
                     twspan.style.setProperty('margin', '0px 5px 0px 0px', 'important');
                     twspan.style.setProperty('line-height', '58px', 'important');
                     twspan.style.setProperty('align-items', 'center', 'important');
@@ -465,7 +465,7 @@
                         emoji.style.setProperty('line-height', '58px', 'important');
                         emoji.style.setProperty('height', '54px', 'important');
                         emoji.style.setProperty('width', '54px', 'important');
-                        emoji.style.setProperty('font-size', '48px');
+                        emoji.style.setProperty('font-size', '48px', 'important');
                         emoji.style.setProperty('align-items', 'center', 'important');
                         emoji.style.setProperty('justify-content', 'center', 'important');
                     }
@@ -501,6 +501,87 @@
 
     let lastPath = location.pathname;
 
+    function renderBadgesToDOM() {
+        //const goldenBadgeSvg = `<span style="font-size:14px;" role="presentation"> 🔱 </span>`;
+        const goldenBadgeSvg=`<svg class="miin-custom-badge inline-block ml-1 h-4 w-4 align-text-bottom" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" fill="#FBBF24"/>
+                <path d="M8 12L11 15L16 9" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`;
+
+        // 負責執行插入的子函數
+        const injectBadge = (element, userId) => {
+            if (!userId) return;
+            const cacheData = sessionStorage.getItem(`miin_user_${userId}`);
+            if (cacheData) {
+                const userData = JSON.parse(cacheData);
+                if (userData.badge === 'golden') {
+                    element.insertAdjacentHTML('beforeend', goldenBadgeSvg);
+                }
+                // 標記已處理
+                element.setAttribute('data-badge-injected', 'true');
+            }
+        };
+
+        // ==========================================
+        // 處理帶有 userId 的完整連結 (留言區/個人主頁)
+        // ==========================================
+        if(window.location.pathname.includes("/story/")){
+            document.querySelectorAll('a[href^="/user?userId="]:not([data-badge-injected="true"])').forEach(el => {
+                const urlObj = new URL(el.getAttribute('href'), window.location.origin);
+                const userId = urlObj.searchParams.get('userId');
+                const sp = el.querySelector('span');
+                if(!sp)injectBadge(el, userId);
+                else{
+                    injectBadge(sp, userId);
+                    el.setAttribute('data-badge-injected', 'true');
+                }
+            });
+        }
+        else{
+            // ==========================================
+            // 處理動態牆 (Feed) 的作者
+            // ==========================================
+            document.querySelectorAll('.flex-col.justify-center > span.text-sm:first-child:not([data-badge-injected="true"])').forEach(el => {
+                const nextEl = el.nextElementSibling; // 抓旁邊帶有 @ 的 span
+                let userId = null;
+
+                // 優先用 @username 來反查 (最準確)
+                if (nextEl && nextEl.innerText.includes('@')) {
+                    const match = nextEl.innerText.match(/@([a-zA-Z0-9_]+)/);
+                    if (match) {
+                        userId = sessionStorage.getItem(`miin_username_${match[1]}`);
+                    }
+                }
+
+                // 如果沒查到，退而求其次用「暱稱」反查
+                if (!userId) {
+                    userId = sessionStorage.getItem(`miin_nickname_${el.innerText.trim()}`);
+                }
+
+                injectBadge(el, userId);
+            });
+
+            // ==========================================
+            // 處理貼文內的「留言預覽」
+            // HTML結構: <div class="font-bold break-all"><span>Cob (MIIN-B1-MW-0535)</span></div>
+            // ==========================================
+            document.querySelectorAll('.font-bold.break-all > span:not([data-badge-injected="true"])').forEach(el => {
+                const nickname = el.innerText.trim();
+                const userId = sessionStorage.getItem(`miin_nickname_${nickname}`); // 用暱稱反查
+                injectBadge(el, userId);
+            });
+
+            // ==========================================
+            // 處理「使用者頁面」的動態列表
+            // ==========================================
+            document.querySelectorAll('.mb-2.mt-1.flex.items-center > span.line-clamp-1:not([data-badge-injected="true"])').forEach(el => {
+                const nickname = el.innerText.split('·')[0].trim();
+                const userId = sessionStorage.getItem(`miin_nickname_${nickname}`);
+                injectBadge(el, userId);
+            });
+        }
+    }
+
     // 🌟 核心最佳化：建立排程排隊機制（AnimationFrame），拒絕主執行緒被頻繁阻塞
     let animationFrameId = null;
     function runAllAdjustments() {
@@ -512,6 +593,7 @@
         cleanContent();
         emojiSize();
         EmojiFeelings();
+        renderBadgesToDOM();
 
         if (location.pathname !== lastPath) {
             lastPath = location.pathname;
@@ -519,8 +601,7 @@
         }
     }
 
-    const observer = new MutationObserver(() => {
-        // 使用 requestAnimationFrame 將 DOM 批次處理移至瀏覽器準備更新畫面的那一幀執行，確保網頁滑動時維持極致順暢
+    const observer = new MutationObserver(() => {      
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(runAllAdjustments);
     });
@@ -529,4 +610,5 @@
         childList: true,
         subtree: true
     });
+
 })();
