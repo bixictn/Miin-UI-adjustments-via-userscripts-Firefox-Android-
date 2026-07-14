@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name   Miin PWA Gesture Adjustments
 // @match  https://miin.cc/*
-// @version   0.3.1.7
+// @version   0.3.5
 // @description  Miin PWA Gesture Adjustments
 // @author       bixictn, Gemini, ChatGPT
-// @grant  none
+// @grant        none
 // @run-at    document-start
 // @updateURL    https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20PWA%20Gesture%20Adjustments.js
 // @downloadURL  https://raw.githubusercontent.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/main/Miin%20PWA%20Gesture%20Adjustments.js
@@ -13,6 +13,57 @@
 (function () {
     'use strict';
 
+    const navEntries = performance.getEntriesByType('navigation');
+    const navType = navEntries.length > 0 ? navEntries[0].type : '';
+
+    // 如果不是返回/前進進入的，代表是首次進入或重新整理
+    if (navType !== 'back_forward') {
+        sessionStorage.setItem('scroll_'+location.pathname,0);
+    }
+
+     window.addEventListener('click', (e) => {
+        const target = e.target.closest('a');
+        if (target && (target.href.endsWith('trend') || target.href.endsWith('search'))) {
+            sessionStorage.setItem('scroll_'+target.pathname,0);
+        }
+    }, true);
+
+    window.MiinPWA = {
+        setScrollLocation: () => {
+            setScrollLocation(location.pathname);
+        }
+    };
+
+    window.MiinDispatcher = {
+        handlers: [],
+        register(name, priority, handler) {
+            this.handlers.push({ name, priority, handler });
+            // 優先權越高越先執行
+            this.handlers.sort((a, b) => b.priority - a.priority);
+            console.log(`[Dispatcher] ${name} registered.`);
+        },
+        dispatch(e) {
+            for (const item of this.handlers) {
+                // 如果 handler 回傳 true，代表該腳本處理了這個事件，終止後續
+                const checktf=item.handler(e);
+                if (checktf) {
+                    e.stopImmediatePropagation();
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
+
+    // 全域只綁定一次 popstate 事件
+    // 為了避免重複綁定，我們用一個 flag
+    if (!window._miin_popstate_bound) {
+        window.addEventListener('popstate', (e) => window.MiinDispatcher.dispatch(e), true);
+        window._miin_popstate_bound = true;
+    }
+
+
+
     const TAG = "#pwa_guard";
     const SESSION_KEY = "pwa_guard_session_console.loged";
 
@@ -20,7 +71,6 @@
     let isDeployed = false;
     let closingByBack = false;
     let debug = true;
-    let scrollHistory = {};
     let scale = 1;
     let handlescroll;
 
@@ -72,9 +122,11 @@
                 document.body.scrollTop = 0;
             }, delay);
         });
+        sessionStorage.setItem('scroll_'+location.pathname,0);sessionStorage.setItem('scroll_'+location.pathname,0);
     }
 
-    window.addEventListener('popstate', (e) => {
+
+    window.MiinDispatcher.register('PWA-Guard', 0, (e) => {
         state.isTouch=false;
         if (e.state?.pwa === "base") {
             history.pushState({ ...(history.state || {}), pwa: "guard"}, "", location.pathname + TAG );
@@ -86,42 +138,17 @@
                 toTop();
             }
 
-            return;
         }
         else{
-            // 🌟 1. 如果是我們自己程式碼呼叫 history.back() 引起的 popstate，直接放行，不做任何畫面處理
-            if (closingByBack) {//closeViewer() 已關閉且呼叫history.back(),解除unlockScroll();
-                closingByBack = false; // 解鎖
-                unlockScroll();
-                e.stopImmediatePropagation();
-                return;
-            }
-
-            // 🌟 2. 使用回上頁（此時 closingByBack 是 false）
-            if (document.querySelector("#pwa-image-viewer")) {
-                e.stopImmediatePropagation();
-                closeViewer(true);//history.state已退回,不須history.back();
-                return;
-            }
-
-            //<div class="fixed inset-0 bg-black/20 opacity-100" id="headlessui-dialog-overlay-:r3s:" aria-hidden="true" data-headlessui-state="open"></div>
-            const closeTarget = document.querySelector('[id^="headlessui-dialog-overlay"]');
-            if(closeTarget) {
-                closeTarget.click();
-                unlockScroll();
-                e.stopImmediatePropagation();
-                return;
-            }
-
             if(state.isPageChange){
                 setTimeout(()=>{
                     setScrollLocation(location.pathname);
                 },300);
 
             }
-            return;
         }
-    }, true);
+        return false;
+    });
 
     ['touchstart', 'wheel'].forEach(evt => {
         window.addEventListener(evt, () => {
@@ -129,11 +156,12 @@
             let myScrollHandler;
             if (handlescroll === undefined) {
                 myScrollHandler = (e) => {
-                    if(!scrollHistory[location.pathname])scrollHistory[location.pathname]=0;
+
+                    if(!sessionStorage.getItem('scroll_'+location.pathname))sessionStorage.setItem('scroll_'+location.pathname,0);
 
                     if (state.isStartTouch) {
-                        if(getScrollY() != 0 && scrollHistory[location.pathname] >= 0){
-                            scrollHistory[location.pathname] = getScrollY();
+                        if(getScrollY() != 0 && sessionStorage.getItem('scroll_'+location.pathname) >= 0){
+                            sessionStorage.setItem('scroll_'+location.pathname, getScrollY());
                         }
                     }
                 };
@@ -188,7 +216,7 @@
 
     function setScrollLocation(currentPath){
 
-        const savedPos =(typeof scrollHistory[currentPath] === undefined)? 0 : scrollHistory[currentPath];
+        const savedPos =(typeof sessionStorage.getItem('scroll_'+currentPath) === undefined)? 0 : sessionStorage.getItem('scroll_'+currentPath);
         let targetY = savedPos ;
 
         log(`[Start] 準備捲動至: ${targetY} (Path: ${currentPath})`);
@@ -246,18 +274,24 @@
     function ExecuteButton() {
         const buttons = document.querySelectorAll('[class^="btn"]');
         buttons.forEach(btn => {
-            if (btn.textContent.trim().indexOf('More')>=0 && location.pathname.indexOf('story')>0) {
-                ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evtType => {
-                    const event = new MouseEvent(evtType, {
-                        view: window,
-                        bubbles: true,
-                        cancelable: true,
-                        buttons: evtType.includes('down') ? 1 : 0
+            try{
+                if (btn.textContent.trim().indexOf('More')>=0 && location.pathname.indexOf('story')>0) {
+                    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evtType => {
+                        const event = new MouseEvent(evtType, {
+                            view: window,
+                            bubbles: true,
+                            cancelable: true,
+                            buttons: evtType.includes('down') ? 1 : 0
+                        });
+                        btn.dispatchEvent(event);
                     });
-                    btn.dispatchEvent(event);
-                });
 
+                }
             }
+            catch{
+                log(btn+'不支援MouseEvent');
+            }
+
         });
     }
 
@@ -278,11 +312,8 @@
     }
 
     function unlockScroll() {
-        // 🌟 只有在使用者真的退出了 imageViewer 狀態時，才移除圖片鎖
-        if (!history.state?.imageViewer) {
-            document.body.classList.remove('viewer-scroll-locked');
-            setScrollLocation(location.pathname);
-        }
+        document.body.classList.remove('viewer-scroll-locked');
+        setScrollLocation(location.pathname);
     }
 
     let overlay;
@@ -290,10 +321,8 @@
     //ESC關圖
     function escHandler(ev) {
         if (ev.key === "Escape"){
-
             if(history.state?.imageViewer) { closeViewer(); }
             else if(history.state?.commentAim) { clearCommentAim();}
-
         }
     }
 
@@ -310,7 +339,6 @@
     }
 
     document.addEventListener("click", e => {
-
         if(location.pathname.indexOf('story')<0) return;
         const thumb = e.target.closest('img[srcset*="/img/comment/"][sizes]');
         if (thumb){//留言圖點擊設定
@@ -325,6 +353,8 @@
                     img.dataset.zoomReady = "1";
 
                     setupImageZoom(img);
+
+
                     const observer = new MutationObserver((mutations, obs) => {
                         if (!document.body.contains(img)) {
                             if (history.state?.imageViewer) {
@@ -479,6 +509,33 @@
         }
     }, true);
 
+    window.MiinDispatcher.register('CommentImageViewer', 90, (e) => {
+        if (closingByBack) {//closeViewer() 已關閉且呼叫history.back(),解除unlockScroll();
+            closingByBack = false; // 解鎖
+            unlockScroll();
+            e.stopImmediatePropagation();
+            return true;
+        }
+
+        //<div class="fixed inset-0 bg-black/20 opacity-100" id="headlessui-dialog-overlay-:r3s:" aria-hidden="true" data-headlessui-state="open"></div>
+        const closeTarget = document.querySelector('[id^="headlessui-dialog-overlay"]');
+        if(closeTarget) {
+            closeTarget.click();
+            unlockScroll();
+            e.stopImmediatePropagation();
+            return true;
+        }
+        return false;
+    });
+
+    window.MiinDispatcher.register('ImageViewer', 90, (e) => {
+        if (document.querySelector("#pwa-image-viewer")) {
+            closeViewer(true);
+            return true;
+        }
+        return false;
+    });
+
     function setupImageZoom( img,closeViewer) {
         lockScroll();
 
@@ -515,16 +572,20 @@
             touchMode = true;
             img.style.transition = "none";
             if ( e.touches.length === 1 ) {
+                touches=1;
                 startX = e.touches[0].pageX - pointX;
                 startY = e.touches[0].pageY - pointY;
             }
             else if ( e.touches.length === 2 ) {
+                touches=2;
                 initialDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY );
             }
         }, { passive:true });
 
         img.addEventListener( "touchmove", e => {
+            e.stopPropagation();
             if ( e.touches.length === 1 && scale > 1 ) {
+                touches=1;
                 e.preventDefault();
                 pointX = e.touches[0].pageX - startX;
                 pointY = e.touches[0].pageY - startY;
@@ -540,30 +601,30 @@
                 initialDist = dist;
                 updateTransform();
             }
+
         },{ passive:false });
 
         img.addEventListener("touchend",() => {
             const now = Date.now();
-
-            if ( (now - lastTap < 300) && touches === 1) {
-                if ( scale === 1 ) {
-                    scale = 2;
-                } else {
+            if ((now - lastTap < 300) && touches === 1) {
+                if (scale > 1) {
                     scale = 1;
                     pointX = 0;
                     pointY = 0;
+                    img.style.transition = "transform 0.3s ease";
+                    img.style.transform = `translate3d(0, 0, 0) scale(1)`;
+                } else {
+                    scale = 2;
+                    pointX = 0;
+                    pointY = 0;
+                    img.style.transition = "transform 0.3s ease";
+                    img.style.transform = `translate3d(0, 0, 0) scale(2)`;
                 }
-                updateTransform();
+                lastTap = now;
+                return;
             }
             lastTap = now-(touches===2?500:0);
-
-            if ( scale <= 1.05) {
-                scale = 1;
-                pointX = 0; pointY = 0;
-                img.style.transition = "transform .25s ease";
-                img.style.transform = "translate3d(0,0,0) scale(1)";
-            }
-            touches=1;
+            touches = 1;
             setTimeout( () => { touchMode = false; }, 50);
         });
 
@@ -704,19 +765,20 @@
 
         clearBtn.onclick = () => clearCommentAim(false);
 
-        window.addEventListener('popstate', (e) => {
+        window.MiinDispatcher.register('AvatarAim', 50, (e) => {
             if (closingAimByBack) {
                 e.stopImmediatePropagation();
                 closingAimByBack = false;
-                return;
+                return true;
             }
 
             const btn = document.getElementById('miin-aim-clear-btn');
             if (!e.state?.commentAim && btn && btn.style.display === 'block') {
                 e.stopImmediatePropagation();
                 clearCommentAim(true);
-                return;
+                return true;
             }
+            return false;
         }, true);
 
         clearBtn.dataset.init = 'true';
