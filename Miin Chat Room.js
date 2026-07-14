@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin Chat Room
 // @namespace    http://tampermonkey.net/
-// @version      0.2.6
+// @version      0.3.0
 // @description  Miin Chat Room
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -222,7 +222,7 @@
     // ==========================================
     // 3. 畫面切換邏輯
     // ==========================================
-    window.addEventListener('popstate', (e) => {
+    window.MiinDispatcher.register('ChatRoom', 0, (e) => {
 
         const state = e.state;
         if (state && state.miinChatPanel) {
@@ -243,6 +243,7 @@
                 viewList.classList.remove('active');
                 viewRoom.classList.add('active');
             }
+            return true;
         } else {
             // 歷史狀態中沒有聊天面板，代表使用者退出了
             historyDepth = 0;
@@ -257,7 +258,11 @@
                 clearInterval(messagePollInterval);
                 messagePollInterval = null;
             }
+            setTimeout(()=>{
+                window.MiinPWA.setScrollLocation();
+            },500);
         }
+        return false;
     });
 
     fab.addEventListener('click', () => {
@@ -286,6 +291,9 @@
         } else {
             panel.style.display = 'none';
         }
+        setTimeout(()=>{
+            window.MiinPWA.setScrollLocation();
+        },500);
     });
 
     document.getElementById('back-to-list-btn').addEventListener('click', () => {
@@ -648,7 +656,7 @@
         subtree: true
     });
 
-    window.addEventListener('popstate', (e) => {
+    window.MiinDispatcher.register('postingLink', 0, (e) => {
         setTimeout(()=>{
             if (checkIsMobile()) {
                 const postingLink = document.querySelector('footer a[href="/posting"]');
