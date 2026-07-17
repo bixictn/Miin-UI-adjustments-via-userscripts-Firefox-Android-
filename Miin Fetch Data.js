@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.4.5
+// @version      0.4.6
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -18,6 +18,80 @@
     unsafeWindow.APP_CONFIG = {
         VERSION: "4.9.13",
         USER_AGENT_STRING: "Miin/Android-4.9.13"
+    };
+
+    unsafeWindow.MiinAPI = {
+        async toggleFollow(hostId, isFollowing) {
+            const action = isFollowing ? 'follow' : 'unfollow';
+            const url = `https://api.miin.cc/web/v2/friend/host:${action}?hostId=${hostId}`;
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${getMiinToken()}`,
+                        'Content-Type': 'application/json',
+                        'x-request-id': generateUUID(), // 您原有的 UUID 產生器
+                        "x-session-id": generateUUID(),
+                        "x-accept-language": "zh-hant",
+                        "x-user-agent": unsafeWindow.APP_CONFIG?.USER_AGENT_STRING,
+                        "user-agent": "okhttp/4.12.0",
+                    }
+                });
+                if (res.ok) {
+                    console.log(`成功執行: ${action}`);
+                    // 更新 SessionStorage 狀態，UI Script 會自動偵測並重新渲染
+                    const cacheRaw = sessionStorage.getItem(`miin_user_${hostId}`);
+                    if (cacheRaw) {
+                        const userData = JSON.parse(cacheRaw);
+                        userData.relation = isFollowing ? 'following' : 'none';
+                        sessionStorage.setItem(`miin_user_${hostId}`, JSON.stringify(userData));
+                    }
+
+                    window.dispatchEvent(new CustomEvent('MiinDataUpdated'));
+                }
+            } catch (err) {
+                console.error('API 操作失敗:', err);
+            }
+        },
+
+        async toggleBlock(hostId, isBlocking) {
+            const action = isBlocking ? 'block' : 'unblock';
+            const url = `https://api.miin.cc/mobile/v4/friend/host:${action}?hostId=${hostId}`;
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${getMiinToken()}`,
+                        'Content-Type': 'application/json',
+                        'x-request-id': generateUUID(), // 您原有的 UUID 產生器
+                        "x-session-id": generateUUID(),
+                        "x-accept-language": "zh-hant",
+                        "x-user-agent": unsafeWindow.APP_CONFIG?.USER_AGENT_STRING,
+                        "user-agent": "okhttp/4.12.0",
+                    }
+                });
+
+                if (res.ok) {
+                    console.log(`成功執行: ${action}`);
+                    // 更新 SessionStorage 狀態，UI Script 會自動偵測並重新渲染
+                    const cacheRaw = sessionStorage.getItem(`miin_user_${hostId}`);
+                    if (cacheRaw) {
+                        const userData = JSON.parse(cacheRaw);
+                        userData.relation = isBlocking ? 'blocking' : 'none'; // 更新狀態
+
+                        // 寫回 Cache
+                        sessionStorage.setItem(`miin_user_${hostId}`, JSON.stringify(userData));
+                    }
+
+                    window.dispatchEvent(new CustomEvent('MiinDataUpdated'));
+                }
+
+            } catch (err) {
+                console.error('API 操作失敗:', err);
+            }
+        }
     };
 
     let fetchdata=false,embeddedquote=false;
@@ -57,6 +131,54 @@
 
     // 覆寫 send 以便在請求發出時觸發我們的邏輯
     XMLHttpRequest.prototype.send = function(body) {
+
+        this.addEventListener('load', () => {
+            if (typeof url === 'string' && url.includes('/web/v2/user/page?userId=')) {//更新帳號關係
+                try {
+                    const response = JSON.parse(this.responseText);
+                    if (response && response.relation) {
+                        const userId = response.user.userId;
+                        const cacheRaw = sessionStorage.getItem(`miin_user_${userId}`);
+                        if (cacheRaw) {
+                            const userData = JSON.parse(cacheRaw);
+                            userData.relation = response.relation;
+                            sessionStorage.setItem(`miin_user_${userId}`, JSON.stringify(userData));
+                        }
+
+                        // 發送廣播通知 UI Script 資料已更新
+                        window.dispatchEvent(new CustomEvent('MiinDataUpdated'));
+                    }
+                } catch (e) {
+                    console.error('解析 relation 失敗:', e);
+                }
+            }
+            else if (typeof url === 'string' && url.includes('me')) {//登入帳號儲存
+                try {
+                    const response = JSON.parse(this.responseText);
+                    if (response && response.me) {
+                        const userId = response.me.userId;
+                        sessionStorage.setItem(`miin_loginId`, userId);
+                    }
+                } catch (e) {
+                    console.error('解析 login user 失敗:', e);
+                }
+            }
+            else if(typeof url === 'string' && url.includes('https://api.miin.cc/web/story/v3/story?storyId=')){//已封鎖誤開文章轉址
+                try{
+                    const response = JSON.parse(this.responseText);
+                    if (response && response.story.state) {
+                        if(response.story.state === 'blocked'){
+                            window.location.replace('/feed/trend');
+                            return;
+                        }
+                    }
+                }
+                catch (e) {
+                    console.error('解析文章 relation 失敗:', e);
+                }
+            }
+        });
+
         const url = this._requestUrl;
         const token = getMiinToken();
         // 1. 偵測是否為請求使用者資料的 v2 API
@@ -68,10 +190,9 @@
 
                 if (userId) {
                     const v4Url = `https://api.miin.cc/mobile/v4/user/page?userId=${userId}&storyLimit=0`;
-                    if (v4Url) {
-                        fetchShadowMobileData(v4Url,token);
-                        return originalXhrSend.apply(this, arguments);
-                    }
+                    fetchShadowMobileData(v4Url,token);
+                    return originalXhrSend.apply(this, arguments);
+
                 }
 
             } catch (e) {
@@ -108,8 +229,10 @@
         const userData = {
             badge: dataObj.badge || 'none',
             nickname: dataObj.nickname || '',
-            username: dataObj.username || ''
+            username: dataObj.username || '',
+            relation: dataObj.relation
         };
+
         sessionStorage.setItem(cacheKey, JSON.stringify(userData));
         if (dataObj.username) {
             sessionStorage.setItem(`miin_username_${dataObj.username}`, userId);
@@ -139,10 +262,9 @@
     // 2. 手機版 API 補齊資料
     // ==========================================
 
-    async function fetchShadowMobileData(Url,token) {
+    async function fetchShadowMobileData(Url,token,getdata) {
 
         try {
-            // 注意：這裡必須使用 originalFetch，避免觸發自己的攔截器造成無限迴圈
             const res = await window.fetch(Url, {
                 method: 'GET',
                 headers: {
@@ -157,6 +279,7 @@
                 }
             });
             const data = await res.json();
+            if(getdata)return data;
             harvestBadgesFromJson(data);
 
         } catch (err) {
@@ -278,9 +401,9 @@
             console.log("🎯 [PWA] 偵測到搜尋區塊，正在同步迷友與最新迷音...");
             fetchdata=true;
             Promise.all([
-                fetch("https://api.miin.cc/mobile/explore/v5/explore/user:list?limit=50&cursor=").then(res => res.json()),
+                fetchShadowMobileData("https://api.miin.cc/mobile/explore/v5/explore/user:list?limit=50&cursor=",getMiinToken(),true),
                 fetch("https://api.miin.cc/mobile/explore/v5/explore/hashtag:list?limit=15&cursor=").then(res => res.json()),
-                fetch("https://api.miin.cc/mobile/explore/v5/explore/story:list?limit=50&cursor=").then(res => res.json())
+                fetchShadowMobileData("https://api.miin.cc/mobile/explore/v5/explore/story:list?limit=50&cursor=",getMiinToken(),true)
             ])
                 .then(([userData, tagData, storyData]) => {
                 if (userData?.users && tagData?.hashtags && storyData?.stories) {
@@ -298,10 +421,13 @@
 
     async function createExploreContainer(users, hashtags, stories) {
         if (document.getElementById('pwa-explore-container')) return null;
-        const goldenBadgeSvg=`<svg class="miin-custom-badge inline-block ml-1 h-4 w-4 align-text-bottom" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="10" fill="#FBBF24"/>
-                <path d="M8 12L11 15L16 9" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>`;
+        const goldenBadgeSvg=`
+                        <svg class="miin-custom-badge inline-block h-4 w-4 align-text-bottom" viewBox="0 0 24 24" fill="none"
+                        xmlns="http://www.w3.org/2000/svg" style="width:24px;height:24px;">
+                            <path fill="#FBBF24" d="M21.8836 11.9999 L23.3416 9.72645 C23.4939 9.48915 23.5389 9.19911 23.4656 8.92762 C23.3934 8.65614 23.2088 8.42762 22.9588 8.29774 L20.5594 7.05751 L20.6854 4.36024 C20.6981 4.07899 20.5926 3.80555 20.3934 3.60633 C20.1941 3.40613 19.9148 3.2909 19.6395 3.31434 L16.9417 3.44032 L15.7015 1.04091 C15.5726 0.790906 15.3441 0.606336 15.0721 0.534066 C14.7996 0.461796 14.5106 0.505746 14.2737 0.658086 L11.9999 2.1161 L9.72594 0.658096 C9.48912 0.505756 9.19811 0.461806 8.9276 0.534076 C8.65563 0.606346 8.42711 0.790916 8.29821 1.04092 L7.05798 3.44033 L4.35974 3.31435 C4.08093 3.29287 3.80554 3.40615 3.60632 3.60634 C3.4071 3.80556 3.30114 4.079 3.31433 4.36025 L3.43982 7.05752 L1.04041 8.29775 C0.790409 8.42763 0.606819 8.65615 0.534059 8.92763 C0.461299 9.19911 0.506229 9.48915 0.658079 9.72646 L2.1156 11.9999 L0.658069 14.2733 C0.506209 14.5106 0.461289 14.8007 0.534049 15.0722 C0.606809 15.3436 0.790399 15.5722 1.0404 15.702 L3.43981 16.9423 L3.31432 19.6395 C3.30114 19.9208 3.40709 20.1942 3.60631 20.3934 C3.80553 20.5936 4.07945 20.703 4.35973 20.6854 L7.05797 20.5595 L8.2982 22.9589 C8.42711 23.2089 8.65562 23.3934 8.92759 23.4657 C9.1981 23.536 9.48911 23.494 9.72593 23.3417 L11.9999 21.8837 L14.2737 23.3417 C14.4363 23.4462 14.6238 23.4999 14.8133 23.4999 C14.8997 23.4999 14.9871 23.4882 15.0721 23.4657 C15.344 23.3934 15.5725 23.2089 15.7014 22.9589 L16.9417 20.5595 L19.6394 20.6854 C19.9168 20.705 20.1951 20.5936 20.3933 20.3934 C20.5926 20.1942 20.698 19.9208 20.6853 19.6395 L20.5593 16.9423 L22.9588 15.702 C23.2088 15.5722 23.3933 15.3436 23.4656 15.0722 C23.5388 14.8007 23.4939 14.5106 23.3416 14.2733 L21.8836 11.9999 Z" />
+                            <path fill="#FFFFFF" d="M17.207 9.70705 L11.207 15.707 C11.0117 15.9024 10.7558 16 10.5 16 C10.2441 16 9.98827 15.9024 9.79296 15.707 L 6.79296 12.707 C 6.40234 12.3164 6.40234 11.6836 6.79296 11.293 C 7.18358 10.9024 7.8164 10.9024 8.20702 11.293 L 10.5 13.586 L 15.793 8.29299 C 16.1836 7.90237 16.8164 7.90237 17.207 8.29299 C 17.5976 8.68361 17.5976 9.31643 17.207 9.70705 Z" />
+                        </svg>
+            `;
         const container = document.createElement('div');
         container.id = 'pwa-explore-container';
         container.style.cssText = checkIsMobile()?`padding-left: 2px; padding-right: 2px;margin-bottom: 0px`:
@@ -325,17 +451,43 @@
                 " class="no-scrollbar">
         `;
 
+        const followSvg = (userID) => `
+                    <svg class="miin-follow-icon inline-block ml-1 h-4 w-4 align-text-bottom" data-userid="${userID}" viewBox="0 0 24 24" fill="none"
+                    xmlns="http://www.w3.org/2000/svg" style="cursor: pointer; width: 16px; height: 16px; margin-right: 5px; ">
+                        <circle cx="12" cy="12" r="10" stroke="#10B981" stroke-width="2.5"></circle>
+                        <path d="M12 8V16M8 12H16" stroke="#10B981" stroke-width="2.5" stroke-linecap="round"></path>
+                    </svg>`;
+
+        // 取消追蹤符號 (-)
+        const unfollowSvg = (userID) => `
+                    <svg class="miin-unfollow-icon inline-block ml-1 h-4 w-4 align-text-bottom"
+                    data-userid="${userID}" viewBox="0 0 24 24" fill="none"
+                    xmlns="http://www.w3.org/2000/svg" style="cursor: pointer; width: 16px; height: 16px; margin-right: 5px; ">
+                        <circle cx="12" cy="12" r="10" stroke="#6B7280" stroke-width="2.5"></circle>
+                        <path d="M8 12H16" stroke="#6B7280" stroke-width="2.5" stroke-linecap="round"></path>
+                    </svg>`;
+
+        const blockSvg = (userID) => `
+                <svg class="miin-block-icon inline-block ml-1 h-4 w-4 align-text-bottom"
+                     data-userid="${userID}"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     xmlns="http://www.w3.org/2000/svg"
+                     style="cursor: pointer; width: 16px; height: 16px; margin-right: 5px;">
+                    <circle cx="12" cy="12" r="10" stroke="#EF4444" stroke-width="2.5"></circle>
+                    <line x1="6" y1="6" x2="18" y2="18" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"></line>
+                </svg>`;
+
         users.slice(0, 50).forEach((user) => {
             const userUrl = `https://miin.cc/user?userId=${user.userId}`;
             const avatarUrl = user.data.avatar.thumb || user.data.avatar.url || 'https://miin.cc/miin.png';
-            harvestBadgesFromJson(user, getMiinToken());
+            harvestBadgesFromJson(user);
 
-            // 🌟 關鍵 1：動態移除 SVG 裡面的 ml-1，讓它在圓圈內可以完美置中
             const avatarBadgeSvg = user.data.badge === 'golden'
-                ? goldenBadgeSvg.replace('ml-1', '').replace('align-text-bottom', '')
-                : '';
+            ? goldenBadgeSvg
+            : '';
 
-        html += `
+            html += `
             <a href="${userUrl}" style="display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: flex-start !important; text-decoration: none !important; width: 68px !important; height: 85px !important; flex-shrink: 0 !important;" class="group">
 
                 <div style="position: relative !important; width: 52px !important; height: 52px !important; flex-shrink: 0 !important;">
@@ -343,7 +495,7 @@
                     <img src="${avatarUrl}" style="box-sizing: border-box !important; width: 100% !important; height: 100% !important; border-radius: 50% !important; object-fit: cover !important; border: 2px solid ${linkcolor} !important;" class="group-hover:border-primary" />
 
                     ${avatarBadgeSvg ? `
-                        <div style="position: absolute !important; bottom: -2px !important; right: -2px !important; background: white !important; border-radius: 50% !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 22px !important; height: 22px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.15) !important;">
+                        <div style="position: absolute !important; bottom: -2px !important; right: -2px !important; border-radius: 50% !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 22px !important; height: 22px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.15) !important;">
                             ${avatarBadgeSvg}
                         </div>
                     ` : ''}
@@ -385,12 +537,16 @@
                 <div style="display: flex !important; flex-direction: column !important; margin-top: 25px !important;gap: 14px !important; width: 100% !important;">
         `;
 
-        const storyPromises = stories.slice(0, 50).map(async (story) => {
+        const storyPromises = stories.slice(0, 50)
+        .map(async (story) => {
             const storyUrl = `https://miin.cc/story/${story.storyId}`;
             const coverImg = story.data.cover?.thumb || story.data.cover?.url || '';
             const authorName = story.data.author?.data?.nickname || '最新迷音';
+            const authorId = story.data.author.userId;
+            let relation;
+
             const reactionCount = story.data.reactions?.reduce((sum, r) => sum + (r.count || 0), 0) || 0;
-            harvestBadgesFromJson(story.data.author,getMiinToken());
+            harvestBadgesFromJson(story.data.author);
 
             const quoteNode = await fetchQuoteNode(story.storyId);
             let pContent;
@@ -402,15 +558,29 @@
                 }
             }
 
+            const cacheRaw = sessionStorage.getItem(`miin_user_${authorId}`);
+            if (cacheRaw) {
+                const userData = JSON.parse(cacheRaw);
+                relation=userData.relation ;
+            }
+            let followActionSvg = '';
+            if (authorId !== sessionStorage.getItem("miin_loginId")) { // 確保不顯示自己的追蹤按鈕
+                followActionSvg = (relation === 'following') ? unfollowSvg(authorId) : followSvg(authorId);
+            }
+
+            let c = `${story.data.author.data.badge === 'golden' ? goldenBadgeSvg : ''}${followActionSvg}${blockSvg(authorId)}`;
+            c = checkIsMobile()?`<span>${c}</span>`:c;
+
             return `
-                <a href="${storyUrl}" class="group" style="height:350px;display: flex !important; flex-direction: row !important; justify-content: space-between !important; gap: 12px !important; text-decoration: none !important; padding: 12px !important; border-radius: 12px !important; background: ${bgcolor} !important; transition: background 0.15s;" onmouseover="this.style.background='#f2f2f7'" onmouseout="this.style.background='${bgcolor}'">
+                <a href='${relation === 'blocking' ? "#' onclick='alert(\"已封鎖該帳號\"); return false;'" : storyUrl}' class="group" style="display: flex !important; flex-direction: row !important; justify-content: space-between !important; gap: 12px !important; text-decoration: none !important; padding: 12px !important; border-radius: 12px !important; background: ${bgcolor} !important; transition: background 0.15s;" onmouseover="this.style.background='#f2f2f7'" onmouseout="this.style.background='${bgcolor}'">
                     <div style="display: flex !important; flex-direction: column !important; justify-content: space-between !important; flex: 1 !important;">
-                        <span style="font-weight: 500; color: ${usercolor};">${authorName}${story.data.author.data.badge === 'golden' ? goldenBadgeSvg : ''} <span style="font-size: 14px; color: #777; margin-left: 12px;">${timeSince(story.data.createAt * 1000)}</span></span>
+                        <span style="font-weight: 500; color: ${usercolor};">${authorName} ${checkIsMobile()?"":c}<span style="font-size: 14px; color: #777; margin-left: 12px;">${timeSince(story.data.createAt * 1000)}</span></span>
+                        ${checkIsMobile()?c:""}
                         <div style="font-size: ${fsnormal} !important; font-weight: 600 !important; color: ${fscolor} !important; line-height: 1.4 !important; display: -webkit-box !important; -webkit-line-clamp: 2 !important; -webkit-box-orient: vertical !important; overflow: hidden !important;">
                             ${story.data.title.replace(/\uFFFC/g, '') || '無標題貼文'}
                             ${pContent?`<div>[轉錄]${pContent.replace(/\uFFFC/g, '')}</div>`:""}
                         </div>
-                        <div style='width: 100%;height: 150px;'>${coverImg ? "<img src='"+coverImg+"' style='width: 100%; max-height: 150px; object-fit: cover; object-position: top; border-radius: 12px !important;'> ":''}</div>
+                        <div style='width: 100%;'>${coverImg ? "<img src='"+coverImg+"' style='width: 100%; max-height: 150px; object-fit: cover; object-position: top; border-radius: 12px !important;'> ":''}</div>
                         <div style="font-size: 13px !important; color: ${bgcolor2} !important; margin-top: 6px !important; display: flex !important; gap: 10px !important; align-items: center !important;">
                             ${story.data.commentCount ? `<span style="font-weight: 500; color: ${usercolor};">💬 ${story.data.commentCount}</span>` : ''}
                             ${reactionCount ? `<span style="font-weight: 500; color: ${usercolor};">👏 ${reactionCount}</span>` : ''}
@@ -555,7 +725,7 @@
             }
             return null;
         } catch (err) {
-            console.error("❌ [PWA] 撈取文章內頁轉錄失敗:", err);
+            console.error("❌ [PWA] 文章內頁轉錄失敗:", err);
             return null;
         }
     }
