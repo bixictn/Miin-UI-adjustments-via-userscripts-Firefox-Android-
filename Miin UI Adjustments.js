@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Adjustments
 // @namespace    http://tampermonkey.net/
-// @version      0.4.6
+// @version      0.5.0
 // @description  Miin UI Adjustments
 // @author       bixictn, Gemini, ChatGPT
 // @match        https://miin.cc/*
@@ -117,14 +117,10 @@
 
     [id^="headlessui-menu-items-"] {
         background-color: ${profileitemcolor} !important;
-        bottom: -170px;
-        margin-top: 45px;
     }
 
     [id^="headlessui-menu-items-"][class="absolute z-10 mt-2 flex w-28 -translate-x-1/2 flex-col divide-y"]{
-        top: 12px;
-        bottom: 0px;
-        right: 0px;
+        width:100px;
         left: 34px;
     }
 
@@ -193,13 +189,18 @@
             white-space: nowrap !important;
             display: inline-flex !important;
             align-items: center !important;
-         }`};
+         }`
+}
+
+    textarea.max-h-22 {
+        height: 60px !important;
+    }
 
      h3[data-badge-injected],span[data-badge-injected] {
           display: inline-flex !important;
           align-items: center !important;
-          white-space: nowrap !important; /* 強制不換行，讓所有圖示黏在一起 */
-          max-width: 100% !important;     /* 避免超出容器 */
+          white-space: nowrap !important;
+          max-width: 100% !important;     
      }
 
     h3[data-badge-injected] svg,span[data-badge-injected] svg {
@@ -213,7 +214,7 @@
     }
 
     article{
-            height: 99.7%;
+        height: 99.7%;
     }
 
     article img.h-7.w-4 {
@@ -256,7 +257,6 @@
     `width: 67.3dvw;
             bottom: 0%;`
 }
-
     }
 
     .aspect-video.w-full,svg.absolute.left-3 {
@@ -396,7 +396,6 @@
     }
 
     function addBubbleQuoteClass() {
-        // 🌟 最佳化：利用 :not 排除已處理的元素，避免重複遍歷
         const targetElements = document.querySelectorAll('.relative.flex.gap-2.leading-6:not(.bubble-quote)');
         targetElements.forEach(element => {
             element.classList.add('bubble-quote');
@@ -449,7 +448,6 @@
         });
     }
 
-    // 🌟 最佳化：高度最佳化核心耗能函式 emojiSize
     const segmenter = new Intl.Segmenter('zh-TW', { granularity: 'grapheme' });
     function emojiSize() {
         const spans = document.querySelectorAll('span:not([data-processed])');
@@ -520,6 +518,17 @@
 
     let lastPath = location.pathname;
 
+    const mentionSvg = (userID, nickname, username) => `
+        <svg class="miin-mention-icon inline-block ml-1 h-4 w-4 align-text-bottom"
+             data-userid="${userID}"
+             data-nickname="${nickname}"
+             data-username="${username}"
+             viewBox="0 0 24 24" fill="none"
+             xmlns="http://www.w3.org/2000/svg"
+             style="cursor: pointer; width: 16px; height: 16px; margin-right: 10px;">
+            <text x="12" y="19" font-size="24" text-anchor="middle" fill="#3B82F6" font-weight="bold" font-family="sans-serif">@</text>
+        </svg>`;
+
     const followSvg = (userID) => `
                     <svg class="miin-follow-icon inline-block ml-1 h-4 w-4 align-text-bottom" data-userid="${userID}" viewBox="0 0 24 24" fill="none"
                     xmlns="http://www.w3.org/2000/svg" style="cursor: pointer; width: 16px; height: 16px; margin-right: 10px; ">
@@ -535,7 +544,7 @@
                         <path d="M8 12H16" stroke="#6B7280" stroke-width="2.5" stroke-linecap="round"></path>
                     </svg>`;
 
-     const blockSvg = (userID) => `
+    const blockSvg = (userID) => `
                 <svg class="miin-block-icon inline-block ml-1 h-4 w-4 align-text-bottom"
                      data-userid="${userID}"
                      viewBox="0 0 24 24"
@@ -547,7 +556,7 @@
                 </svg>`;
 
     async function renderBadgesToDOM() {
-       
+
         const goldenBadgeSvg=`
                         <svg class="miin-custom-badge inline-block ml-1 h-4 w-4 align-text-bottom" viewBox="0 0 24 24" fill="none"
                         xmlns="http://www.w3.org/2000/svg" style="margin-right: 10px;">
@@ -556,8 +565,6 @@
                         </svg>
             `;
 
-
-        // 負責執行插入的子函數
         function injectBadge (element, userId) {
 
             let span = document.createElement('span');
@@ -589,11 +596,16 @@
                         const cacheRaw = sessionStorage.getItem(`miin_user_${userId}`);
                         if (cacheRaw) {
                             const userData = JSON.parse(cacheRaw);
+
+                            if(window.location.pathname.includes('/story/')){
+                                span.insertAdjacentHTML('beforeend',mentionSvg(userId,userData.nickname,userData.username));
+                            }
+
                             if(userData.relation === 'none'){
                                 span.insertAdjacentHTML('beforeend',followSvg(userId));
                             }
                             else if(userData.relation === 'following'){
-                                 span.insertAdjacentHTML('beforeend',unfollowSvg(userId));
+                                span.insertAdjacentHTML('beforeend',unfollowSvg(userId));
                             }
                         }
 
@@ -626,10 +638,9 @@
             const avatarElement=document.querySelector('#avatar:not([data-badge-injected="true"])');
 
             if(avatarElement){
-                const nextEl = avatarElement.nextElementSibling; // 抓旁邊帶有 @ 的 span
+                const nextEl = avatarElement.nextElementSibling; 
                 let userId = null;
 
-                // 優先用 @username 來反查 (最準確)
                 if (nextEl && nextEl.innerText.includes('@')) {
                     const match = nextEl.innerText.match(/@([a-zA-Z0-9_]+)/);
                     if (match) {
@@ -651,10 +662,9 @@
         }
         else{
             document.querySelectorAll('.flex-col.justify-center > span.text-sm:first-child:not([data-badge-injected="true"])').forEach(el => {
-                const nextEl = el.nextElementSibling; // 抓旁邊帶有 @ 的 span
+                const nextEl = el.nextElementSibling; 
                 let userId = null;
 
-                // 優先用 @username 來反查 (最準確)
                 if (nextEl && nextEl.innerText.includes('@')) {
                     const match = nextEl.innerText.match(/@([a-zA-Z0-9_]+)/);
                     if (match) {
@@ -662,17 +672,13 @@
                     }
                 }
 
-                // 如果沒查到，退而求其次用「暱稱」反查
                 if (!userId) {
                     userId = sessionStorage.getItem(`miin_nickname_${el.innerText.trim()}`);
                 }
 
                 injectBadge(el, userId);
             });
-            // ==========================================
-            // 處理貼文內的「留言預覽」
-            // HTML結構: <div class="font-bold break-all"><span>Cob (MIIN-B1-MW-0535)</span></div>
-            // ==========================================
+            
             document.querySelectorAll('.font-bold.break-all > span:not([data-badge-injected="true"])').forEach(el => {
                 const nickname = el.innerText.trim();
                 const userId = sessionStorage.getItem(`miin_nickname_${nickname}`); // 用暱稱反查
@@ -768,7 +774,7 @@
             top: '20px',
             left:'50%',
             padding: '10px 20px',
-            backgroundColor: '#FBBF24', // 金色按鈕
+            backgroundColor: '#FBBF24', 
             border: 'none',
             borderRadius: '5px',
             cursor: 'pointer',
@@ -817,7 +823,7 @@
 
             const icon = followIcon || unfollowIcon;
             const userId = icon.getAttribute('data-userid');
-            const willFollowing = !followIcon; // 如果不是點到 followIcon，代表點 unfollowIcon 要追蹤
+            const willFollowing = !followIcon; 
 
             await window.MiinAPI.toggleFollow(userId, !willFollowing);
 
@@ -841,6 +847,33 @@
                 userData.relation = !willFollowing ? 'following' : 'none';
                 sessionStorage.setItem(`miin_user_${userId}`, JSON.stringify(userData));
                 //if(window.location.pathname.includes('/user/')) window.location.reload();
+            }
+        }
+
+        const mentionIcon = e.target.closest('.miin-mention-icon');
+
+        if (mentionIcon) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const nickname = mentionIcon.getAttribute('data-nickname');
+            const username = mentionIcon.getAttribute('data-username');
+
+            const mentionText = `@${nickname}(${username}) `;
+            const textarea = document.querySelector('textarea');
+
+            if (textarea) {
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const text = textarea.value;
+
+                textarea.value = text.slice(0, start) + mentionText + text.slice(end);
+
+                textarea.selectionStart = textarea.selectionEnd = start + mentionText.length;
+                textarea.focus();
+
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                textarea.dispatchEvent(new Event('change', { bubbles: true }));
             }
         }
 
