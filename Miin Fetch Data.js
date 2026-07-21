@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Miin Fetch Data
-// @version      0.4.6
+// @version      0.5.0
 // @description  Miin Fetch Data
 // @match        https://miin.cc/*
 // @grant        GM_xmlhttpRequest
@@ -119,21 +119,188 @@
         return originalSetRequestHeader.apply(this, arguments);
     };
 
+
     const originalXhrOpen = XMLHttpRequest.prototype.open;
     const originalXhrSend = XMLHttpRequest.prototype.send;
 
-    // 覆寫 open 以便把 URL 存起來
-    XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-        // 將 URL 綁定到這個 XHR 實例上，讓稍後的 send 可以讀取
-        this._requestUrl = url;
-        return originalXhrOpen.apply(this, arguments);
+    XMLHttpRequest.prototype.open = function(method, url) {
+        let targetUrl = url;
+
+        // 1. 發文與編輯 (PATCH/POST) 轉址
+        if ((method === 'PATCH' || method === 'POST') && typeof url === 'string') {
+            if (url.includes('/web/v2/posting/story')) {
+                targetUrl = url.replace('/web/v2/posting/story', '/mobile/posting/v5/story');
+                console.log('[Miin] 發文/編輯 攔截成功！轉址為 v5:', targetUrl);
+            }
+            // 【新增】攔截留言請求
+            else if (url.includes('/web/v2/posting/comment')) {
+                targetUrl = url.replace('/web/v2/posting/comment', '/mobile/posting/v5/comment');
+                console.log('[Miin] 留言 攔截成功！轉址為 v5:', targetUrl);
+            }
+        }
+        // 2. 取得草稿 (GET) 轉址 (直接讓網頁去抓 v5 的完整資料)
+        else if (method === 'GET' && typeof url === 'string' && url.includes('/web/v2/posting/story?storyId=')) {
+            targetUrl = url.replace('/web/v2/posting/story', '/mobile/posting/v5/story');
+            this._isDraftRequest = true; // 標記這是一個草稿請求
+            console.log('[Miin] GET 草稿轉址至 v5:', targetUrl);
+        }
+
+        this._method = method;
+        this._url = targetUrl;
+        this._requestUrl = targetUrl;
+
+        return originalXhrOpen.apply(this, [method, targetUrl, ...Array.from(arguments).slice(2)]);
     };
 
-    // 覆寫 send 以便在請求發出時觸發我們的邏輯
-    XMLHttpRequest.prototype.send = function(body) {
 
-        this.addEventListener('load', () => {
-            if (typeof url === 'string' && url.includes('/web/v2/user/page?userId=')) {//更新帳號關係
+    XMLHttpRequest.prototype.send = function(body) {
+        const url = this._requestUrl;
+        // 確保有這個全域變數或函式
+        const token = typeof getMiinToken === 'function' ? getMiinToken() : '';
+
+        // ==========================================
+        // A. Payload 攔截與修改 (發文/更新時)
+        // ==========================================
+        const isStory = this._url.includes('/mobile/posting/v5/story');
+        const isComment = this._url.includes('/mobile/posting/v5/comment');
+
+        if ((this._method === 'PATCH' || this._method === 'POST') && (isStory || isComment) && typeof body === 'string') {
+            try {
+                const data = JSON.parse(body);
+
+                // 確保有內容才處理 (防呆)
+                if (data.text !== undefined) {
+                    let v5Data = {};
+
+                    // 1. 根據類型建立不同的基底結構
+                    if (isStory) {
+                        v5Data = {
+                            title: [{ query: null, text: data.title || '', type: 'plain', userId: null }],
+                            content: [],
+                            coverKeys: data.coverKeys || [],
+                            videoKeys: data.videoKeys || [],
+                            audioKey: data.audioKey || "",
+                            fieldMask: ["title", "content", "coverKeys", "videoKeys", "audioKey", "previewTitle", "previewImageKey"],
+                            previewImageKey: null,
+                            previewTitle: null
+                        };
+                    } else if (isComment) {
+                        v5Data = {
+                            storyId: data.storyId,
+                            audioKey: data.audioKey || null, // 留言的空值是 null
+                            imageKey: data.imageKey || null, // 留言的空值是 null
+                            content: []
+                        };
+                    }
+
+                    // 2. 共用強大的字串切割與還原邏輯
+                    const parts = data.text.split(/(#\S+|@[^\(]+\([^\)]+\)|\n)/);
+
+                    parts.forEach(part => {
+                        if (!part) return;
+
+                        const mentionMatch = part.match(/^@([^\(]+)\(([^\)]+)\)$/);
+
+                        if (mentionMatch) {
+                            const nickname = mentionMatch[1];
+                            const username = mentionMatch[2];
+                            let uid = null;
+
+                            // 利用您的捷徑快取瞬間反查 ID
+                            let cachedId = window.sessionStorage.getItem(`miin_username_${username}`);
+                            if (cachedId) {
+                                uid = parseInt(cachedId.replace(/"/g, ''), 10);
+                            }
+
+                            if (uid) {
+                                v5Data.content.push({ query: null, text: null, type: 'mention', userId: uid });
+                                console.log(`[Miin] 成功將 ${isComment ? '留言' : '文章'} 提及 @${username} 轉換為 userId: ${uid}`);
+                            } else {
+                                v5Data.content.push({ query: null, text: part, type: 'plain', userId: null });
+                                console.warn(`[Miin] 找不到 ${username} 的快取資料，以純文字發送`);
+                            }
+                        } else if (part.startsWith('#')) {
+                            v5Data.content.push({ query: part, text: null, type: 'hashtag', userId: null });
+                        } else {
+                            v5Data.content.push({ query: null, text: part, type: 'plain', userId: null });
+                        }
+                    });
+
+                    console.log(`[Miin] 已成功轉換為 v5 Payload 格式 (${isComment ? 'Comment' : 'Story'})`);
+                    arguments[0] = JSON.stringify(v5Data);
+                }
+            } catch (e) {
+                console.error('[Miin] Payload 轉換失敗:', e);
+            }
+        }
+
+        // ==========================================
+        // B. 草稿 Response 攔截 (修改回傳內容) - 同步執行，不阻塞！
+        // ==========================================
+        if (this._isDraftRequest) {
+            const originalResponseTextDescriptor = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
+            const originalResponseDescriptor = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'response');
+
+            const interceptGetter = function() {
+                let rawText = originalResponseTextDescriptor.get.call(this);
+                if (!rawText) return rawText;
+
+                try {
+                    let data = JSON.parse(rawText);
+
+                    // 確定拿到的是 v5 格式
+                    if (data.story && data.story.data) {
+
+                        // 【關鍵修正 1】：應付 Zod 驗證，將 title 陣列轉回字串
+                        if (Array.isArray(data.story.data.title)) {
+                            data.story.data.title = data.story.data.title.map(t => t.text || '').join('');
+                        }
+
+                        // 處理 content (還原 Mention)
+                        if (data.story.data.content) {
+                            let rebuiltText = '';
+
+                            data.story.data.content.forEach(item => {
+                                if (item.type === 'mention') {
+                                    const uid = item.data.userId;
+                                    const nickname = item.text || item.data.nickname;
+                                    let foundUsername = uid;
+
+                                    let cacheData = window.sessionStorage.getItem(`miin_user_${uid}`);
+                                    if (cacheData) {
+                                        try { foundUsername = JSON.parse(cacheData).username; } catch(e) {}
+                                    }
+                                    rebuiltText += `@${nickname}(${foundUsername})`;
+                                } else if (item.type === 'hashtag') {
+                                    rebuiltText += item.text;
+                                } else {
+                                    rebuiltText += item.text || '';
+                                }
+                            });
+
+                            data.story.data.text = rebuiltText;
+
+                            delete data.story.data.content;
+                        }
+
+                        return JSON.stringify(data);
+                    }
+                } catch (e) {
+                    console.error('[Miin] 草稿 JSON 解析重組失敗', e);
+                }
+                return rawText;
+            };
+
+            Object.defineProperty(this, 'responseText', { get: interceptGetter });
+            Object.defineProperty(this, 'response', { get: interceptGetter });
+        }
+
+
+        // ==========================================
+        // C. 被動讀取：監聽載入完成事件 (處理其他頁面邏輯)
+        // ==========================================
+        this.addEventListener('load', async () => {
+            if (typeof url === 'string' && url.includes('/web/v2/user/page?userId=')) {
                 try {
                     const response = JSON.parse(this.responseText);
                     if (response && response.relation) {
@@ -144,82 +311,70 @@
                             userData.relation = response.relation;
                             sessionStorage.setItem(`miin_user_${userId}`, JSON.stringify(userData));
                         }
-
-                        // 發送廣播通知 UI Script 資料已更新
                         window.dispatchEvent(new CustomEvent('MiinDataUpdated'));
                     }
                 } catch (e) {
                     console.error('解析 relation 失敗:', e);
                 }
             }
-            else if (typeof url === 'string' && url.includes('me')) {//登入帳號儲存
+            else if (typeof url === 'string' && url.includes('me')) {
                 try {
                     const response = JSON.parse(this.responseText);
                     if (response && response.me) {
-                        const userId = response.me.userId;
-                        sessionStorage.setItem(`miin_loginId`, userId);
+                        sessionStorage.setItem(`miin_loginId`, response.me.userId);
                     }
                 } catch (e) {
                     console.error('解析 login user 失敗:', e);
                 }
             }
-            else if(typeof url === 'string' && url.includes('https://api.miin.cc/web/story/v3/story?storyId=')){//已封鎖誤開文章轉址
-                try{
+            else if (typeof url === 'string' && url.includes('https://api.miin.cc/web/story/v3/story?storyId=')) {
+                try {
                     const response = JSON.parse(this.responseText);
-                    if (response && response.story.state) {
-                        if(response.story.state === 'blocked'){
-                            window.location.replace('/feed/trend');
-                            return;
-                        }
+                    if (response && response.story.state && response.story.state === 'blocked') {
+                        window.location.replace('/feed/trend');
                     }
-                }
-                catch (e) {
+                } catch (e) {
                     console.error('解析文章 relation 失敗:', e);
                 }
             }
         });
 
-        const url = this._requestUrl;
-        const token = getMiinToken();
-        // 1. 偵測是否為請求使用者資料的 v2 API
+        // ==========================================
+        // D. 發送 Shadow API 請求 (背景執行)
+        // ==========================================
         if (typeof url === 'string' && url.includes('/web/v2/user/page?userId=')) {
             try {
-                // 2. 解析出 userId (處理相對路徑或絕對路徑)
                 const urlObj = new URL(url.startsWith('http') ? url : window.location.origin + url);
                 const userId = urlObj.searchParams.get('userId');
-
                 if (userId) {
-                    const v4Url = `https://api.miin.cc/mobile/v4/user/page?userId=${userId}&storyLimit=0`;
-                    fetchShadowMobileData(v4Url,token);
-                    return originalXhrSend.apply(this, arguments);
-
+                    fetchShadowMobileData(`https://api.miin.cc/mobile/v4/user/page?userId=${userId}&storyLimit=0`, token);
                 }
-
-            } catch (e) {
-                console.error('v4Url發生錯誤:', e);
-            }
+            } catch (e) { console.error('v4Url發生錯誤:', e); }
         }
 
         let mobileUrl = '';
-        const urlObj = new URL(url.startsWith('http') ? url : window.location.origin + url);
-        const storyId = urlObj.searchParams.get('storyId');
+        try {
+            const urlObj = new URL(url.startsWith('http') ? url : window.location.origin + url);
+            const storyId = urlObj.searchParams.get('storyId');
+            const cursor = urlObj.searchParams.get('cursor') || '';
+            const limit = urlObj.searchParams.get('limit') || '30';
 
-        // 取得原請求的分頁參數，若無則給預設值
-        const cursor = urlObj.searchParams.get('cursor') || '';
-        const limit = urlObj.searchParams.get('limit') || '30'; // 配合 v3 的 30 筆
+            if (url.includes('/comment:list') && storyId) {
+                mobileUrl = `https://api.miin.cc/mobile/story/v5/comment:list?storyId=${storyId}&limit=${limit}&cursor=${encodeURIComponent(cursor)}`;
+            } else if (url.includes('/story/page') && storyId) {
+                mobileUrl = `https://api.miin.cc/mobile/story/v5/page?storyId=${storyId}`;
+            } else if (url.includes('/story:list')) {
+                mobileUrl = `https://api.miin.cc/mobile/feed/v5/trend/story:list?limit=${limit}&cursor=${encodeURIComponent(cursor)}&immersive=true`;
+            }
 
-        if (url.includes('/comment:list') && storyId) {
-            mobileUrl = `https://api.miin.cc/mobile/story/v5/comment:list?storyId=${storyId}&limit=${limit}&cursor=${encodeURIComponent(cursor)}`;
-        } else if (url.includes('/story/page') && storyId) {
-            mobileUrl = `https://api.miin.cc/mobile/story/v5/page?storyId=${storyId}`;
-        } else if (url.includes('/story:list')) {
-            mobileUrl = `https://api.miin.cc/mobile/feed/v5/trend/story:list?limit=${limit}&cursor=${encodeURIComponent(cursor)}&immersive=true`;
-        }
+            if (mobileUrl) {
+                fetchShadowMobileData(mobileUrl, token);
+            }
+        } catch (e) {}
 
-        if (mobileUrl) {
-            fetchShadowMobileData(mobileUrl, token);
-        }
-
+        // ==========================================
+        // E. 最終發送 (確保所有前置作業完成，且只呼叫一次)
+        // ==========================================
         return originalXhrSend.apply(this, arguments);
     };
 
