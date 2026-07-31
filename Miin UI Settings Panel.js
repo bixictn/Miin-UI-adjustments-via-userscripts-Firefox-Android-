@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Miin UI Settings Panel
 // @namespace    http://tampermonkey.net/
-// @version      0.4.5
+// @version      0.4.5.1
 // @description  Miin UI Settings Panel
 // @author       bixictn
 // @match        https://miin.cc/*
@@ -154,6 +154,35 @@
         unlockScroll(); location.reload();
     };
 
+    // 匯出
+    document.getElementById('export_btn').onclick = () => {
+        let settings = {};
+        configFields.forEach(f => settings[f.key] = localStorage.getItem(f.key));
+        const blob = new Blob([JSON.stringify(settings)], {type: 'application/json'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'miin_settings.json';
+        a.click();
+    };
+
+    // 匯入
+    document.getElementById('import_btn').onclick = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = e => {
+            const reader = new FileReader();
+            reader.onload = event => {
+                const settings = JSON.parse(event.target.result);
+                for (let key in settings) localStorage.setItem(key, settings[key]);
+                location.reload();
+            };
+            reader.readAsText(e.target.files[0]);
+        };
+        input.click();
+    };
+
+    
     // 用來暫存使用者選取的圖片檔案
     let pendingAvatarFile = null;
     let pendingCoverFile = null;
