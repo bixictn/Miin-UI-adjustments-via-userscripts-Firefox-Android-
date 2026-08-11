@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>安裝擴充功能</title>
+</head>
+<body>
+  <button onclick="installXpi()">點此安裝 Firefox 擴充功能</button>
+
+  <script>
+    function installXpi() {
+      const xpiUrl = 'https://github.com/bixictn/Miin-UI-adjustments-via-userscripts-Firefox-Android-/raw/refs/heads/main/frefox/Miin-cc-firefox(0.5.3.3).xpi';
+      
+      if (typeof InstallTrigger !== 'undefined') {
+        const params = {
+          'My Extension': {
+            URL: xpiUrl
+          }
+        };
+        InstallTrigger.install(params);
+      } else {
+        alert('請使用 Firefox 瀏覽器開啟此頁面。');
+      }
+    }
+  </script>
+</body>
+</html>
